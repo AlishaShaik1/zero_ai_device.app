@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import '../models/ring_state.dart';
@@ -11,7 +12,6 @@ import '../ai/zero_nano_service.dart';
 import '../ai/zero_agentic_service.dart';
 import '../ai/zero_prime_service.dart';
 import '../services/classifier_service.dart';
-import '../utils/constants.dart';
 
 class ZeroController with ChangeNotifier {
   RingState _ringState = RingState.initial();
@@ -201,9 +201,15 @@ class ZeroController with ChangeNotifier {
       // 1. Agentic / Tool Calling execution
       final intent = await _agenticService.parseIntent(text);
       if (intent.action != ZeroAction.unknown) {
-        _updateResponse("Executing command...");
+        _updateResponse('Executing command...');
+
+        // Signal ring: start thinking
+        if (intent.action == ZeroAction.searchWeb) {
+          await _bleService.sendDisplayCommand(Uint8List.fromList([0x11]));
+        }
+
         final actionResult = await _actionService.execute(intent);
-        
+
         if (actionResult == 'MOUSE_ENABLE') {
           toggleMouseMode();
         } else if (actionResult == 'MOUSE_DISABLE') {
@@ -211,6 +217,19 @@ class ZeroController with ChangeNotifier {
         } else {
           _updateResponse(actionResult);
           await _ttsService.speak(actionResult);
+
+          // ── Send answer to ring OLED for searchWeb ──────────────────────
+          if (intent.action == ZeroAction.searchWeb) {
+            // Truncate to OLED limit (~38 chars readable across 4 lines)
+            final oledText = actionResult.length > 38
+                ? actionResult.substring(0, 38)
+                : actionResult;
+            final textBytes = utf8.encode(oledText);
+            final cmd = Uint8List(textBytes.length + 1);
+            cmd[0] = 0x01; // firmware showText() command
+            cmd.setRange(1, cmd.length, textBytes);
+            await _bleService.sendDisplayCommand(cmd);
+          }
         }
         _updateEmotion(ZeroEmotion.happy);
         _personalityService.recordAction(intent.action.name);

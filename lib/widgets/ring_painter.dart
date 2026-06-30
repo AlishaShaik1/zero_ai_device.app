@@ -21,7 +21,7 @@ class RingPainter extends CustomPainter {
 
     // 1. Shadow for 3D depth
     final shadowPaint = Paint()
-      ..color = Colors.black.withOpacity(0.5)
+      ..color = Colors.black.withValues(alpha: 0.5)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20);
     canvas.drawOval(
       Rect.fromCenter(center: center.translate(0, radius * 0.5), width: radius * 2.2, height: radius * 1.5),
@@ -37,9 +37,9 @@ class RingPainter extends CustomPainter {
         Offset(0, 0),
         Offset(size.width, size.height),
         [
-          Colors.white.withOpacity(0.4),
-          Colors.white.withOpacity(0.1),
-          Colors.white.withOpacity(0.3),
+          Colors.white.withValues(alpha: 0.4),
+          Colors.white.withValues(alpha: 0.1),
+          Colors.white.withValues(alpha: 0.3),
         ],
         [0.0, 0.5, 1.0],
       );
@@ -75,7 +75,7 @@ class RingPainter extends CustomPainter {
 
     // Add gold contacts / chips accents
     final goldPaint = Paint()
-      ..color = const Color(0xFFD4AF37).withOpacity(0.6)
+      ..color = const Color(0xFFD4AF37).withValues(alpha: 0.6)
       ..style = PaintingStyle.fill;
     
     // Draw small chips
@@ -101,7 +101,7 @@ class RingPainter extends CustomPainter {
     final innerHighlight = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
-      ..color = Colors.white.withOpacity(0.5);
+      ..color = Colors.white.withValues(alpha: 0.5);
     canvas.drawCircle(center, radius - strokeWidth/2, innerHighlight);
 
     // 5. Top Island with OLED Display
@@ -122,7 +122,7 @@ class RingPainter extends CustomPainter {
     final islandBorder = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
-      ..color = Colors.white.withOpacity(0.3);
+      ..color = Colors.white.withValues(alpha: 0.3);
     canvas.drawRRect(islandRRect, islandBorder);
 
     // OLED Screen area
@@ -135,7 +135,7 @@ class RingPainter extends CustomPainter {
 
     // Cyan Eyes (Zero Emotion)
     final cyanPaint = Paint()
-      ..color = const Color(0xFF00FFFF).withOpacity(connected ? 0.9 : 0.3)
+      ..color = const Color(0xFF00FFFF).withValues(alpha: connected ? 0.9 : 0.3)
       ..maskFilter = MaskFilter.blur(BlurStyle.solid, glowIntensity * 5 + 1);
 
     // Draw square eyes based on emotion
@@ -167,7 +167,7 @@ class RingPainter extends CustomPainter {
     canvas.drawCircle(camCenter, 10, Paint()..color = const Color(0xFF222222));
     canvas.drawCircle(camCenter, 6, Paint()..color = const Color(0xFF0a0a0a));
     // Lens reflection
-    canvas.drawCircle(camCenter.translate(-2, -2), 2, Paint()..color = Colors.white.withOpacity(0.6));
+    canvas.drawCircle(camCenter.translate(-2, -2), 2, Paint()..color = Colors.white.withValues(alpha: 0.6));
 
     // 7. Cyan LED indicator
     final ledCenter = Offset(islandRect.right - 14, islandRect.top + 8);
@@ -175,7 +175,7 @@ class RingPainter extends CustomPainter {
       ledCenter, 
       3, 
       Paint()
-        ..color = const Color(0xFF00FFFF).withOpacity(connected ? 1.0 : 0.2)
+        ..color = const Color(0xFF00FFFF).withValues(alpha: connected ? 1.0 : 0.2)
         ..maskFilter = MaskFilter.blur(BlurStyle.solid, connected ? glowIntensity * 4 + 2 : 0)
     );
     canvas.drawCircle(ledCenter, 1.5, Paint()..color = Colors.white);
@@ -184,7 +184,7 @@ class RingPainter extends CustomPainter {
     final outerHighlight = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3
-      ..color = Colors.white.withOpacity(0.6)
+      ..color = Colors.white.withValues(alpha: 0.6)
       ..strokeCap = StrokeCap.round;
     
     canvas.drawArc(

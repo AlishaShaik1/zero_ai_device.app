@@ -47,11 +47,11 @@ class _RingConnectionPopupState extends State<RingConnectionPopup> with SingleTi
     return Container(
       height: MediaQuery.of(context).size.height * 0.55,
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E).withOpacity(0.95), // iOS dark mode popup color
+        color: const Color(0xFF1C1C1E).withValues(alpha: 0.95), // iOS dark mode popup color
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.5),
+            color: Colors.black.withValues(alpha: 0.5),
             blurRadius: 20,
             spreadRadius: 5,
           )
@@ -65,7 +65,7 @@ class _RingConnectionPopupState extends State<RingConnectionPopup> with SingleTi
             width: 40,
             height: 5,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(10),
             ),
           ),
@@ -123,7 +123,7 @@ class _RingConnectionPopupState extends State<RingConnectionPopup> with SingleTi
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                 ),
               ),
             ],

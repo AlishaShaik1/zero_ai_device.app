@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/zero_controller.dart';
-import '../theme/app_colors.dart';
 
 class SkillsScreen extends StatelessWidget {
   const SkillsScreen({Key? key}) : super(key: key);

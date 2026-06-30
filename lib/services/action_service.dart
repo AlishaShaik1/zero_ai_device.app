@@ -7,6 +7,7 @@ import 'package:android_intent_plus/flag.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:timezone/timezone.dart' as tz;
 import '../ai/zero_agentic_service.dart';
+import 'search_gateway_service.dart';
 
 class ActionService {
   Future<String> execute(ParsedAction action) async {
@@ -299,8 +300,20 @@ class ActionService {
 
   Future<String> _searchWeb(Map<String, String> params) async {
     final query = params['query'] ?? '';
-    final uri = Uri.parse('https://www.google.com/search?q=$query');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-    return 'Searching the web for "$query" 🔍';
+    if (query.isEmpty) return 'What would you like me to search for?';
+
+    // Fetch results from Zero Search Gateway
+    final results = await SearchGatewayService.instance.search(query);
+
+    if (results.isEmpty) {
+      return 'Search unavailable, try again';
+    }
+
+    // Build a short TTS-friendly answer from the top result.
+    // The ring OLED is 64x32 (≈10 chars/line × 4 lines = ~40 chars).
+    // TTS gets the full snippet (≤120 chars); OLED gets the first 38 chars.
+    final top = results.first;
+    final spoken = top.snippet.isNotEmpty ? top.snippet : top.title;
+    return spoken.length > 120 ? '${spoken.substring(0, 120)}…' : spoken;
   }
 }

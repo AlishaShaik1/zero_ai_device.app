@@ -47,6 +47,7 @@ class AppConstants {
   static const String PREF_TTS_SPEED = 'tts_speed';
   static const String PREF_TTS_PITCH = 'tts_pitch';
   static const String PREF_LANGUAGE = 'user_language';
+  static const String PREF_SUB_KEY = 'zero_ring_sub_key';
 
   // BLE reconnect delays seconds
   static const List<int> RECONNECT_DELAYS = [1, 2, 4, 8, 30];

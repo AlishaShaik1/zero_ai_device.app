@@ -33,6 +33,11 @@ class PersonalityService {
   double get moodScore => _moodScore;
   int get totalInteractions => _totalInteractions;
   String get userName => _userName;
+  int get todayInteractions => _todayInteractions;
+  int get shakeCount => _shakeCount;
+  int get consecutiveIdleSeconds => _consecutiveIdleSeconds;
+  DateTime get lastPet => _lastPet;
+  bool get ringConnected => _ringConnected;
 
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();

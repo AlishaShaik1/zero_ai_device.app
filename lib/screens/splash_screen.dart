@@ -60,7 +60,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF00C9C8).withOpacity(0.4),
+                        color: const Color(0xFF00C9C8).withValues(alpha: 0.4),
                         blurRadius: 40,
                         spreadRadius: 10,
                       ),
@@ -77,7 +77,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       shape: BoxShape.circle,
                       color: const Color(0xFF15151F),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.1),
+                        color: Colors.white.withValues(alpha: 0.1),
                         width: 1,
                       ),
                     ),
@@ -111,7 +111,7 @@ class _SplashScreenState extends State<SplashScreen> {
               'Intelligence on your finger',
               style: TextStyle(
                 fontSize: 14,
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha: 0.5),
                 letterSpacing: 0.5,
               ),
             ).animate().fade(delay: 800.ms, duration: 600.ms),

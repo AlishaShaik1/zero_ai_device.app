@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/download_service.dart';
 import '../models/download_model.dart';
-import '../theme/app_colors.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -43,7 +42,7 @@ class SettingsScreen extends StatelessWidget {
             title: Text('Wake Word', style: TextStyle(color: Colors.white.withValues(alpha: 0.9))),
             value: true,
             onChanged: (val) {},
-            activeColor: const Color(0xFF00C9C8),
+            activeThumbColor: const Color(0xFF00C9C8),
           ),
         ],
       ),
