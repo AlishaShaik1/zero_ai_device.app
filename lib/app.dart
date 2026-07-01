@@ -7,6 +7,7 @@ import 'screens/settings_screen.dart';
 import 'screens/skills_screen.dart';
 import 'screens/classifier_test_screen.dart';
 import 'screens/debug_screen.dart';
+import 'screens/connectors_screen.dart';
 import 'theme/app_theme.dart';
 
 class ZeroRingApp extends StatelessWidget {
@@ -27,6 +28,7 @@ class ZeroRingApp extends StatelessWidget {
         '/skills': (_) => const SkillsScreen(),
         '/classifier_test': (_) => const ClassifierTestScreen(),
         '/debug': (_) => const DebugScreen(),
+        '/connectors': (_) => const ConnectorsScreen(),
       },
     );
   }

@@ -438,8 +438,8 @@ class _HomeScreenState extends State<HomeScreen>
           false, () => controller.captureAndAnalyze()),
       _QuickAction(Icons.search_rounded, 'Search',
           false, () => controller.handleTextCommand('search the web')),
-      _QuickAction(Icons.grid_view_rounded, 'Skills',
-          false, () => Navigator.pushNamed(context, '/skills')),
+      _QuickAction(Icons.storefront_rounded, 'Connectors',
+          false, () => Navigator.pushNamed(context, '/connectors')),
     ];
 
     return Padding(

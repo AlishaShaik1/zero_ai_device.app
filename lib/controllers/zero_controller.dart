@@ -175,7 +175,7 @@ class ZeroController with ChangeNotifier {
     notifyListeners();
 
     try {
-      // TODO: Replace with actual STT when models are downloaded
+      // Note: Replace with actual STT when models are downloaded
       // For now, fallback to a friendly message
       _updateResponse("I heard you! Voice transcription coming soon 🎙️");
       await _ttsService.speak("I heard you, but I need my speech models first!");

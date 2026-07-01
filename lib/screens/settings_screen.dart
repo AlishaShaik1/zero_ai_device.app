@@ -42,7 +42,7 @@ class SettingsScreen extends StatelessWidget {
             title: Text('Wake Word', style: TextStyle(color: Colors.white.withValues(alpha: 0.9))),
             value: true,
             onChanged: (val) {},
-            activeThumbColor: const Color(0xFF00C9C8),
+            activeColor: const Color(0xFF00C9C8),
           ),
         ],
       ),
