@@ -40,6 +40,7 @@ class ConnectorRegistry {
             type: type,
             feasibility: FeasibilityTier.selfServe, // simplify for example
             description: json['description'] ?? '',
+            systemPromptExtension: json['system_prompt_extension'],
             authStatus: authStatus,
             availableActions: [], // parse actions here in a real app
           );

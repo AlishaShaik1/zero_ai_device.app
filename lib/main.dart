@@ -6,6 +6,7 @@ import 'app.dart';
 import 'controllers/zero_controller.dart';
 import 'services/download_service.dart';
 import 'services/search_gateway_service.dart';
+import 'services/marketplace_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +22,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => ZeroController()..initState()),
         ChangeNotifierProvider(create: (_) => DownloadService()),
+        ChangeNotifierProvider.value(value: MarketplaceService.instance),
       ],
       child: const ZeroRingApp(),
     ),

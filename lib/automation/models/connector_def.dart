@@ -69,6 +69,7 @@ class ConnectorDef {
   final List<ConnectorAction> availableActions;
   final String? iconAsset;
   final String description;
+  final String? systemPromptExtension;
   final bool isPremium;
 
   /// Runtime state — mutable, stored per-user in local DB
@@ -91,6 +92,7 @@ class ConnectorDef {
     required this.availableActions,
     this.iconAsset,
     required this.description,
+    this.systemPromptExtension,
     this.isPremium = false,
     this.authStatus = AuthStatus.notConnected,
     this.lastVerified,
@@ -111,6 +113,7 @@ class ConnectorDef {
     'feasibility': feasibility.name,
     'tos_risk': tosRisk,
     'auth_status': authStatus.name,
+    if (systemPromptExtension != null) 'system_prompt_extension': systemPromptExtension,
     'available_actions': availableActions.map((a) => a.name).toList(),
   };
 }
