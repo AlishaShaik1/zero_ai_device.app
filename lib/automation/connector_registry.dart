@@ -3,53 +3,115 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'models/connector_def.dart';
 
+/// Thin wrapper around the marketplace API for Gemma's gate-check logic.
+/// For full catalog UI use MarketplaceService instead.
 class ConnectorRegistry {
-  final String _marketplaceUrl = 'https://your-vercel-marketplace.vercel.app/api/connectors';
+  static const String _marketplaceUrl =
+      'https://zero-connector-marketplace.vercel.app/api/connectors';
+
   List<ConnectorDef> _registry = [];
+  bool get isEmpty => _registry.isEmpty;
+  int get count => _registry.length;
 
-  // Fetch the latest catalog from the remote marketplace (e.g. Vercel)
-  Future<void> loadMarketplace() async {
+  /// Fetch and cache the connector catalog.
+  /// The server returns { data: [...], total, limit, offset }.
+  Future<void> loadMarketplace({String? userId}) async {
     try {
-      final response = await http.get(Uri.parse(_marketplaceUrl));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        _registry = data.map((json) {
-          // Parse basic fields
-          final id = json['connector_id'] as String;
-          final displayName = json['display_name'] as String;
-          final aliases = List<String>.from(json['aliases'] ?? []);
-          
-          // Parse enums safely
-          final typeStr = json['type'] as String? ?? 'apiOauth';
-          final type = ConnectorType.values.firstWhere(
-            (e) => e.name == typeStr, 
-            orElse: () => ConnectorType.apiOauth
-          );
+      final uri = Uri.parse(_marketplaceUrl).replace(
+        queryParameters: <String, String>{
+          if (userId != null) 'user_id': userId,
+          'limit': '200',
+        },
+      );
+      final response = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) {
+        if (kDebugMode) print('[ConnectorRegistry] HTTP ${response.statusCode}');
+        return;
+      }
 
-          final authStatusStr = json['auth_status'] as String? ?? 'notConnected';
-          final authStatus = AuthStatus.values.firstWhere(
-            (e) => e.name == authStatusStr, 
-            orElse: () => AuthStatus.notConnected
-          );
+      // ✅ Unwrap the { data: [...] } envelope from the API
+      final decoded = json.decode(response.body) as Map<String, dynamic>;
+      final List<dynamic> data = decoded['data'] as List<dynamic>? ?? [];
 
-          return ConnectorDef(
-            id: id,
-            displayName: displayName,
-            aliases: aliases,
-            category: ConnectorCategory.utilities, // simplify for example
-            type: type,
-            feasibility: FeasibilityTier.selfServe, // simplify for example
-            description: json['description'] ?? '',
-            systemPromptExtension: json['system_prompt_extension'],
-            authStatus: authStatus,
-            availableActions: [], // parse actions here in a real app
+      _registry = data.map((j) {
+        final m = j as Map<String, dynamic>;
+        final id = m['connector_id'] as String;
+        final displayName = m['display_name'] as String;
+        final aliases = List<String>.from(m['aliases'] ?? []);
+
+        // auth_flow → ConnectorType
+        final authFlow = m['auth_flow'] as String? ?? 'oauth2_pkce';
+        final ConnectorType type;
+        if (authFlow == 'apiKey') {
+          type = ConnectorType.apiKey;
+        } else if (authFlow == 'none') {
+          type = ConnectorType.deepLinkOnly;
+        } else {
+          type = ConnectorType.apiOauth;
+        }
+
+        final feasStr = m['feasibility'] as String? ?? 'selfServe';
+        final feasibility = FeasibilityTier.values.firstWhere(
+          (e) => e.name == feasStr,
+          orElse: () => FeasibilityTier.selfServe,
+        );
+
+        final catStr = m['category'] as String? ?? 'utilities';
+        final category = ConnectorCategory.values.firstWhere(
+          (e) => e.name == catStr,
+          orElse: () => ConnectorCategory.utilities,
+        );
+
+        final authStatusStr = m['auth_status'] as String? ?? 'notConnected';
+        final authStatus = AuthStatus.values.firstWhere(
+          (e) => e.name == authStatusStr,
+          orElse: () => AuthStatus.notConnected,
+        );
+
+        // Parse actions list from marketplace format
+        final rawActions = m['available_actions'] as List<dynamic>? ?? [];
+        final actions = rawActions.map((a) {
+          final am = a as Map<String, dynamic>;
+          final paramsList = am['parameters'] as List<dynamic>? ?? [];
+          final paramsMap = <String, ParamDef>{};
+          for (final p in paramsList) {
+            final pm = p as Map<String, dynamic>;
+            final name = pm['name'] as String? ?? '';
+            if (name.isNotEmpty) {
+              paramsMap[name] = ParamDef(
+                type: pm['type'] as String? ?? 'string',
+                required: pm['required'] as bool? ?? true,
+                description: pm['description'] as String?,
+              );
+            }
+          }
+          return ConnectorAction(
+            name: am['name'] as String,
+            description: am['description'] as String? ?? '',
+            params: paramsMap,
           );
         }).toList();
-        if (kDebugMode) print("Loaded \${_registry.length} connectors from marketplace.");
+
+        return ConnectorDef(
+          id: id,
+          displayName: displayName,
+          aliases: aliases,
+          category: category,
+          type: type,
+          feasibility: feasibility,
+          description: m['description'] as String? ?? '',
+          systemPromptExtension: m['system_prompt_extension'] as String?,
+          tosRisk: m['tos_risk'] as bool? ?? false,
+          authStatus: authStatus,
+          availableActions: actions,
+        );
+      }).toList();
+
+      if (kDebugMode) {
+        print('[ConnectorRegistry] Loaded ${_registry.length} connectors.');
       }
     } catch (e) {
-      if (kDebugMode) print("Failed to load marketplace: \$e");
-      // Fallback to local cache if network fails
+      if (kDebugMode) print('[ConnectorRegistry] loadMarketplace error: $e');
     }
   }
 
