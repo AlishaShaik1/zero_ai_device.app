@@ -1,10 +1,13 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../controllers/zero_controller.dart';
 import '../models/ring_state.dart';
-import '../widgets/zero_pet_widget.dart';
+import '../widgets/zero_orb.dart';
+import '../widgets/chat_area.dart';
+import '../widgets/floating_control_bar.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -13,39 +16,37 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with TickerProviderStateMixin {
-  late AnimationController _breatheController;
-  late AnimationController _waveController;
+class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  bool _isKeyboardVisible = false;
 
   @override
   void initState() {
     super.initState();
-    _breatheController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 3000),
-    )..repeat(reverse: true);
-    _waveController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat();
-
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF0A0A0F),
+      systemNavigationBarColor: Colors.transparent,
     ));
   }
 
   @override
   void dispose() {
-    _breatheController.dispose();
-    _waveController.dispose();
     _textController.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  void _toggleKeyboard() {
+    setState(() {
+      _isKeyboardVisible = !_isKeyboardVisible;
+      if (_isKeyboardVisible) {
+        _focusNode.requestFocus();
+      } else {
+        _focusNode.unfocus();
+      }
+    });
   }
 
   @override
@@ -56,512 +57,212 @@ class _HomeScreenState extends State<HomeScreen>
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0F),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildTopBar(context, controller, state, isConnected),
-            const Spacer(flex: 1),
-            _buildCentralOrb(controller, state, isConnected),
-            const SizedBox(height: 24),
-            _buildResponseArea(controller, state),
-            const Spacer(flex: 1),
-            _buildCommandInput(controller),
-            const SizedBox(height: 8),
-            _buildQuickActions(controller, state),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTopBar(BuildContext context, ZeroController controller,
-      RingState state, bool isConnected) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: Row(
+      extendBody: true,
+      body: Stack(
         children: [
-          // Connection indicator
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: (isConnected ? const Color(0xFF00C9C8) : Colors.white)
-                    .withValues(alpha: 0.15),
+          // Background Gradient Mesh
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: const Alignment(0, -0.6),
+                  radius: 1.0,
+                  colors: [
+                    const Color(0xFF1E1E28).withValues(alpha: 0.5),
+                    const Color(0xFF0A0A0F),
+                  ],
+                ),
               ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          ),
+          
+          SafeArea(
+            bottom: false,
+            child: Column(
               children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isConnected
-                        ? const Color(0xFF00C9C8)
-                        : const Color(0xFF444444),
-                    boxShadow: isConnected
-                        ? [
-                            BoxShadow(
-                              color: const Color(0xFF00C9C8)
-                                  .withValues(alpha: 0.6),
-                              blurRadius: 8,
-                            )
-                          ]
-                        : [],
+                _buildTopBar(isConnected),
+                
+                // Orb Area (Top 40%)
+                Expanded(
+                  flex: 4,
+                  child: Center(
+                    child: ZeroOrb(
+                      emotion: state.currentEmotion,
+                      isRecording: state.isRecording,
+                      isProcessing: controller.isProcessing,
+                    ).animate().scale(duration: 800.ms, curve: Curves.easeOutBack),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  isConnected ? 'Zero Ring' : 'Searching…',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white.withValues(alpha: 0.7),
+                
+                // Live Transcription (Middle)
+                AnimatedBuilder(
+                  animation: controller.voicePipelineService,
+                  builder: (context, _) {
+                    final transcript = controller.voicePipelineService.recognizedWords;
+                    if (!controller.voicePipelineService.isListening || transcript.isEmpty) {
+                      return const SizedBox(height: 20);
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Text(
+                        '"$transcript"',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.white.withValues(alpha: 0.8),
+                          fontStyle: FontStyle.italic,
+                          height: 1.4,
+                        ),
+                        textAlign: TextAlign.center,
+                      ).animate().fade().slideY(begin: 0.2, end: 0),
+                    );
+                  },
+                ),
+
+                // Chat Area (Bottom 60%)
+                Expanded(
+                  flex: 6,
+                  child: Stack(
+                    children: [
+                      ChatArea(conversationManager: controller.conversationManager),
+                      
+                      // Keyboard Input Overlay
+                      if (_isKeyboardVisible)
+                        Positioned(
+                          bottom: 0, left: 0, right: 0,
+                          child: _buildKeyboardInput(controller),
+                        ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          const Spacer(),
-          // Mouse mode badge
-          if (state.isMouseModeActive)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00C9C8).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Text(
-                '🖱️ Air Mouse',
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF00C9C8)),
+          
+          // Floating Control Bar
+          if (!_isKeyboardVisible)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                child: FloatingControlBar(
+                  controller: controller,
+                  state: state,
+                  onKeyboardTap: _toggleKeyboard,
+                  onSettingsTap: () => Navigator.pushNamed(context, '/settings'),
+                ).animate().fade().slideY(begin: 0.5, end: 0, curve: Curves.easeOutCubic),
               ),
             ),
-          const SizedBox(width: 8),
-          _glassIcon(Icons.tune_rounded, () => Navigator.pushNamed(context, '/settings')),
-          const SizedBox(width: 8),
-          _glassIcon(Icons.bug_report_rounded, () => Navigator.pushNamed(context, '/debug')),
         ],
       ),
     );
   }
 
-  Widget _glassIcon(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
-          shape: BoxShape.circle,
-          border:
-              Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        ),
-        child: Icon(icon, size: 18, color: Colors.white.withValues(alpha: 0.5)),
-      ),
-    );
-  }
-
-  Widget _buildCentralOrb(
-      ZeroController controller, RingState state, bool isConnected) {
-    final isRecording = state.isRecording;
-    final isProcessing = controller.isProcessing;
-
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.mediumImpact();
-        if (isRecording) {
-          controller.stopRecording();
-        } else {
-          controller.startRecording();
-        }
-      },
-      onLongPress: () {
-        HapticFeedback.heavyImpact();
-        controller.onPetTapped();
-      },
-      child: AnimatedBuilder(
-        animation: _breatheController,
-        builder: (context, child) {
-          final breathe = _breatheController.value;
-          final orbSize = 200.0 + (isRecording ? breathe * 20 : breathe * 6);
-          final glowOpacity = isRecording
-              ? 0.4 + breathe * 0.3
-              : isProcessing
-                  ? 0.3 + breathe * 0.2
-                  : 0.08 + breathe * 0.06;
-
-          return SizedBox(
-            width: 260,
-            height: 260,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // Outer glow
-                Container(
-                  width: orbSize + 60,
-                  height: orbSize + 60,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: _emotionColor(state.currentEmotion)
-                            .withValues(alpha: glowOpacity),
-                        blurRadius: 80,
-                        spreadRadius: 20,
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Glass ring border
-                Container(
-                  width: orbSize,
-                  height: orbSize,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        Colors.white.withValues(alpha: 0.03),
-                        Colors.white.withValues(alpha: 0.01),
-                        Colors.transparent,
-                      ],
-                    ),
-                    border: Border.all(
-                      color: _emotionColor(state.currentEmotion)
-                          .withValues(alpha: 0.3 + breathe * 0.2),
-                      width: 1.5,
-                    ),
-                  ),
-                ),
-
-                // Ring pet widget!
-                ClipOval(
-                  child: Container(
-                    width: orbSize - 40,
-                    height: orbSize - 40,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xFF12121A),
-                    ),
-                    child: Center(
-                      child: Transform.scale(
-                        scale: (orbSize - 40) / 200.0,
-                        child: ZeroPetWidget(
-                          emotion: state.currentEmotion,
-                          audioLevel: state.audioLevel,
-                          isConnected: isConnected,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Emotion overlay text
-                Positioned(
-                  bottom: 20,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: _emotionColor(state.currentEmotion)
-                            .withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Text(
-                      isRecording
-                          ? '🎤 Listening…'
-                          : isProcessing
-                              ? '🧠 Thinking…'
-                              : _emotionLabel(state.currentEmotion),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: _emotionColor(state.currentEmotion),
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Recording waves
-                if (isRecording) _buildRecordingWaves(),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildRecordingWaves() {
-    return AnimatedBuilder(
-      animation: _waveController,
-      builder: (context, _) {
-        return CustomPaint(
-          size: const Size(260, 260),
-          painter: _WaveRingPainter(
-            progress: _waveController.value,
-            color: const Color(0xFF00C9C8),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildResponseArea(ZeroController controller, RingState state) {
-    final response = controller.lastResponse;
-    if (response.isEmpty) return const SizedBox(height: 60);
-
+  Widget _buildTopBar(bool isConnected) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.04),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-        ),
-        child: Text(
-          response,
-          style: TextStyle(
-            fontSize: 15,
-            color: Colors.white.withValues(alpha: 0.85),
-            height: 1.5,
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8, height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isConnected ? const Color(0xFF00C9C8) : const Color(0xFF444444),
+                  boxShadow: isConnected ? [BoxShadow(color: const Color(0xFF00C9C8).withValues(alpha: 0.5), blurRadius: 8)] : [],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                isConnected ? 'Zero Connected' : 'Searching for Ring...',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ],
           ),
-          textAlign: TextAlign.center,
-        ),
+          // Debug hidden access - double tap the status
+          GestureDetector(
+            onDoubleTap: () => Navigator.pushNamed(context, '/debug'),
+            child: Icon(Icons.info_outline_rounded, color: Colors.white.withValues(alpha: 0.2), size: 20),
+          ),
+        ],
       ),
-    ).animate().fade(duration: 300.ms).slideY(begin: 0.1, end: 0);
+    );
   }
 
-  Widget _buildCommandInput(ZeroController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _textController,
-                focusNode: _focusNode,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontSize: 15,
+  Widget _buildKeyboardInput(ZeroController controller) {
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E28).withValues(alpha: 0.9),
+            border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+          ),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: _toggleKeyboard,
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.05)),
+                  child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
                 ),
-                decoration: InputDecoration(
-                  hintText: 'Ask Zero anything…',
-                  hintStyle: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.25),
-                    fontSize: 15,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                   ),
-                  border: InputBorder.none,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: TextField(
+                    controller: _textController,
+                    focusNode: _focusNode,
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                    decoration: InputDecoration(
+                      hintText: 'Type a message...',
+                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+                      border: InputBorder.none,
+                    ),
+                    onSubmitted: (text) {
+                      if (text.trim().isNotEmpty) {
+                        controller.handleTextCommand(text.trim());
+                        _textController.clear();
+                        _toggleKeyboard();
+                      }
+                    },
+                  ),
                 ),
-                onSubmitted: (text) {
-                  if (text.trim().isNotEmpty) {
-                    controller.handleTextCommand(text.trim());
+              ),
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: () {
+                  final text = _textController.text.trim();
+                  if (text.isNotEmpty) {
+                    controller.handleTextCommand(text);
                     _textController.clear();
-                    _focusNode.unfocus();
+                    _toggleKeyboard();
                   }
                 },
-              ),
-            ),
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                final text = _textController.text.trim();
-                if (text.isNotEmpty) {
-                  controller.handleTextCommand(text);
-                  _textController.clear();
-                  _focusNode.unfocus();
-                } else {
-                  if (controller.ringState.isRecording) {
-                    controller.stopRecording();
-                  } else {
-                    controller.startRecording();
-                  }
-                }
-              },
-              child: Container(
-                margin: const EdgeInsets.only(right: 6),
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF00C9C8), Color(0xFF00B0B0)],
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(colors: [Color(0xFF00C9C8), Color(0xFF00E5FF)]),
+                    boxShadow: [BoxShadow(color: const Color(0xFF00C9C8).withValues(alpha: 0.4), blurRadius: 12)],
                   ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF00C9C8).withValues(alpha: 0.3),
-                      blurRadius: 12,
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  _textController.text.trim().isNotEmpty
-                      ? Icons.arrow_upward_rounded
-                      : Icons.mic_rounded,
-                  color: const Color(0xFF0A0A0F),
-                  size: 20,
+                  child: const Icon(Icons.arrow_upward_rounded, color: Color(0xFF0A0A0F), size: 20),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ).animate().slideY(begin: 1.0, end: 0, duration: 300.ms, curve: Curves.easeOutCubic),
       ),
     );
   }
-
-  Widget _buildQuickActions(ZeroController controller, RingState state) {
-    final actions = [
-      _QuickAction(Icons.mouse_rounded, 'Mouse',
-          state.isMouseModeActive, () => controller.toggleMouseMode()),
-      _QuickAction(Icons.camera_alt_rounded, 'Camera',
-          false, () => controller.captureAndAnalyze()),
-      _QuickAction(Icons.search_rounded, 'Search',
-          false, () => controller.handleTextCommand('search the web')),
-      _QuickAction(Icons.storefront_rounded, 'Connectors',
-          false, () => Navigator.pushNamed(context, '/connectors')),
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: actions.map((a) {
-          return GestureDetector(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              a.onTap();
-            },
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: a.active
-                    ? const Color(0xFF00C9C8).withValues(alpha: 0.12)
-                    : Colors.white.withValues(alpha: 0.04),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: a.active
-                      ? const Color(0xFF00C9C8).withValues(alpha: 0.3)
-                      : Colors.white.withValues(alpha: 0.06),
-                ),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(a.icon,
-                      size: 22,
-                      color: a.active
-                          ? const Color(0xFF00C9C8)
-                          : Colors.white.withValues(alpha: 0.4)),
-                  const SizedBox(height: 4),
-                  Text(
-                    a.label,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: a.active
-                          ? const Color(0xFF00C9C8)
-                          : Colors.white.withValues(alpha: 0.35),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Color _emotionColor(ZeroEmotion emotion) {
-    switch (emotion) {
-      case ZeroEmotion.happy:
-        return const Color(0xFF00C9C8);
-      case ZeroEmotion.thinking:
-        return const Color(0xFF8B5CF6);
-      case ZeroEmotion.excited:
-        return const Color(0xFFF59E0B);
-      case ZeroEmotion.sleeping:
-        return const Color(0xFF475569);
-      case ZeroEmotion.surprised:
-        return const Color(0xFFEF4444);
-      case ZeroEmotion.listening:
-        return const Color(0xFF3B82F6);
-    }
-  }
-
-  String _emotionLabel(ZeroEmotion emotion) {
-    switch (emotion) {
-      case ZeroEmotion.happy:
-        return '✨ Tap to talk';
-      case ZeroEmotion.thinking:
-        return '🧠 Processing';
-      case ZeroEmotion.excited:
-        return '⚡ Excited';
-      case ZeroEmotion.sleeping:
-        return '💤 Sleeping';
-      case ZeroEmotion.surprised:
-        return '😲 Surprised';
-      case ZeroEmotion.listening:
-        return '🎤 Listening';
-    }
-  }
-}
-
-class _QuickAction {
-  final IconData icon;
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  _QuickAction(this.icon, this.label, this.active, this.onTap);
-}
-
-class _WaveRingPainter extends CustomPainter {
-  final double progress;
-  final Color color;
-
-  _WaveRingPainter({required this.progress, required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    for (int i = 0; i < 3; i++) {
-      final phase = (progress + i * 0.33) % 1.0;
-      final radius = 100.0 + phase * 30;
-      final opacity = (1.0 - phase) * 0.3;
-      canvas.drawCircle(
-        center,
-        radius,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5
-          ..color = color.withValues(alpha: opacity),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _WaveRingPainter old) =>
-      old.progress != progress;
 }

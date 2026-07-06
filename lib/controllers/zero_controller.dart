@@ -12,6 +12,11 @@ import '../ai/zero_nano_service.dart';
 import '../ai/zero_agentic_service.dart';
 import '../ai/zero_prime_service.dart';
 import '../services/classifier_service.dart';
+import '../services/model_lifecycle_manager.dart';
+import '../services/voice_pipeline_service.dart';
+import '../services/translation_service.dart';
+import '../services/conversation_manager.dart';
+import '../services/user_preferences_service.dart';
 
 class ZeroController with ChangeNotifier {
   RingState _ringState = RingState.initial();
@@ -24,6 +29,13 @@ class ZeroController with ChangeNotifier {
   final ActionService _actionService = ActionService();
   final ClassifierService _classifierService = ClassifierService();
   final PersonalityService _personalityService = PersonalityService();
+  final UserPreferencesService _preferencesService = UserPreferencesService();
+
+  // ModelLifecycleManager kept for debug screen and future use
+  late final ModelLifecycleManager _lifecycleManager;
+  final TranslationService _translationService = MockTranslationService();
+  final ConversationManager _conversationManager = ConversationManager();
+  late final VoicePipelineService _voicePipelineService;
   
   String _lastResponse = "";
   String _debugRouting = "";
@@ -37,67 +49,108 @@ class ZeroController with ChangeNotifier {
   bool get isProcessing => _isProcessing;
   ClassifierService get classifierService => _classifierService;
   PersonalityService get personalityService => _personalityService;
+  bool get isWakeWordListening => _audioService.isWakeWordListening;
+  ConversationManager get conversationManager => _conversationManager;
+  VoicePipelineService get voicePipelineService => _voicePipelineService;
+  UserPreferencesService get preferencesService => _preferencesService;
+  ModelLifecycleManager get lifecycleManager => _lifecycleManager;
 
-  Future<void> initState() async {
-    // 1. Init personality system
-    await _personalityService.initialize();
-    
-    // 2. Init TTS
-    await _ttsService.initialize();
-    
-    // 3. Init Agentic & Prime
-    await _agenticService.initialize();
-    await _primeService.initialize();
-    
-    // 4. Load classifier
-    await _classifierService.loadModel();
-    
-    // 5. Set initial greeting based on personality
-    _lastResponse = _personalityService.getGreeting();
-    
-    // 6. Start BLE scan
-    _subs.add(_bleService.connectionStream.listen((state) {
-      _ringState = _ringState.copyWith(connectionState: state);
-      if (state == RingConnectionState.connected) {
-        _personalityService.onRingConnected();
-        _ttsService.speak(_personalityService.getConnectionMessage());
-        _updateEmotion(ZeroEmotion.excited);
-        Future.delayed(const Duration(milliseconds: 2000), () => _updateEmotion(ZeroEmotion.happy));
-      } else if (state == RingConnectionState.disconnected) {
-        _personalityService.onRingDisconnected();
-      }
-      notifyListeners();
-    }));
-    
-    // 7. Listen to BLE audio from ring
-    _subs.add(_bleService.audioStream.listen((audioData) {
-      _audioService.processBleAudioChunk(audioData);
-      if (_audioService.detectWakeWord(audioData)) {
-        _handleVoiceActivation();
-      }
-    }));
-    
-    // 8. Listen to accel data — gravity reactivity
-    _subs.add(_bleService.accelStream.listen((accel) {
-      _handleSensorData(accel);
-      if (_ringState.isMouseModeActive) {
-        _handleMouseMovement(accel);
-      }
-    }));
-    
-    // 9. Start idle behavior timer
-    _startIdleBehaviors();
-    
-    _bleService.startScan();
-    notifyListeners();
+  ZeroController() {
+    _lifecycleManager = ModelLifecycleManager(_nanoService, _primeService, _ttsService);
+    _voicePipelineService = VoicePipelineService(
+      onCommandRecognized: handleTextCommand,
+      translationService: _translationService,
+      conversationManager: _conversationManager,
+      ttsService: _ttsService,
+    );
   }
 
-  /// Initialize the Qwen Nano model with a given path
-  Future<void> initNanoModel(String modelPath) async {
-    await _nanoService.initialize(modelPath);
-    if (_nanoService.isLoaded) {
-      _updateResponse("Zero Nano ready! I'm online ✨");
+  Future<void> initState() async {
+    try {
+
+      // 0. Load user preferences (language, etc.) before anything else
+      await _preferencesService.init();
+
+      // 1. Init personality system
+      await _personalityService.initialize();
+
+      // 2. Init TTS — apply saved language
+      try {
+        await _ttsService.initialize();
+        await _ttsService.setLanguage(_preferencesService.selectedLanguage.ttsLocale);
+      } catch (e) {
+        debugPrint('[ZeroController] TTS initialization failed: $e');
+      }
+      
+      // 3. Init Agentic & Prime
+      try {
+        await _agenticService.initialize();
+      } catch (e) {
+        debugPrint('[ZeroController] Agentic service initialization failed: $e');
+      }
+      try {
+        await _primeService.initialize();
+      } catch (e) {
+        debugPrint('[ZeroController] Prime service initialization failed: $e');
+      }
+      
+      // 4. Load classifier
+      try {
+        await _classifierService.loadModel();
+      } catch (e) {
+        debugPrint('[ZeroController] Classifier model load failed: $e');
+      }
+
+      // 5. Initialize Wake-Word engine
+      try {
+        await _audioService.initWakeWordEngine(() {
+          _handleVoiceActivation();
+        });
+      } catch (e) {
+        debugPrint('[ZeroController] Wake-word engine initialization failed: $e');
+      }
+
+      // 6. Set greeting response
+      _lastResponse = _personalityService.getGreeting();
+
+      // 7. Start BLE scan
+      _subs.add(_bleService.connectionStream.listen((state) {
+        _ringState = _ringState.copyWith(connectionState: state);
+        if (state == RingConnectionState.connected) {
+          _personalityService.onRingConnected();
+          _ttsService.speak(_personalityService.getConnectionMessage());
+          _updateEmotion(ZeroEmotion.excited);
+          Future.delayed(const Duration(milliseconds: 2000), () => _updateEmotion(ZeroEmotion.happy));
+        } else if (state == RingConnectionState.disconnected) {
+          _personalityService.onRingDisconnected();
+        }
+        notifyListeners();
+      }));
+
+      // 8. Listen to BLE audio from ring
+      _subs.add(_bleService.audioStream.listen((audioData) {
+        _audioService.processBleAudioChunk(audioData);
+        if (_audioService.detectWakeWord(audioData)) {
+          _handleVoiceActivation();
+        }
+      }));
+
+      // 9. Listen to accel data — gravity reactivity
+      _subs.add(_bleService.accelStream.listen((accel) {
+        _handleSensorData(accel);
+        if (_ringState.isMouseModeActive) {
+          _handleMouseMovement(accel);
+        }
+      }));
+
+      // 10. Start idle behavior timer
+      _startIdleBehaviors();
+
+      _bleService.startScan();
+    } catch (e) {
+      debugPrint('[ZeroController] Critical error during initState: $e');
     }
+    notifyListeners();
   }
 
   // ═══ SENSOR REACTIVITY ═══
@@ -167,26 +220,11 @@ class ZeroController with ChangeNotifier {
 
   // ═══ VOICE / TEXT PROCESSING ═══
 
+  // handleVoiceInput() is now obsolete — VoicePipelineService calls
+  // handleTextCommand() directly via the onCommandRecognized callback.
+  // Keeping this stub for BLE raw audio fallback only.
   Future<void> handleVoiceInput(Uint8List audioBytes) async {
-    if (_isProcessing) return;
-    _isProcessing = true;
-    _updateEmotion(ZeroEmotion.thinking);
-    _ringState = _ringState.copyWith(isRecording: false);
-    notifyListeners();
-
-    try {
-      // Note: Replace with actual STT when models are downloaded
-      // For now, fallback to a friendly message
-      _updateResponse("I heard you! Voice transcription coming soon 🎙️");
-      await _ttsService.speak("I heard you, but I need my speech models first!");
-      _updateEmotion(ZeroEmotion.happy);
-    } catch(e) {
-      _updateResponse("Oops, something went wrong! 😅");
-      _updateEmotion(ZeroEmotion.surprised);
-    } finally {
-      _isProcessing = false;
-      notifyListeners();
-    }
+    debugPrint('[ZeroController] Raw BLE audio received — STT handled by VoicePipelineService.');
   }
 
   // DIRECT TEXT COMMAND (works without ring hardware)
@@ -245,36 +283,42 @@ class ZeroController with ChangeNotifier {
       if (isSimple && _nanoService.isLoaded) {
         _ringState = _ringState.copyWith(activeModel: ActiveModel.nano);
         notifyListeners();
-
-        final response = await _nanoService.ask(text);
-        _updateResponse(response);
-        await _ttsService.speak(response);
+        // FIX #5: Stream tokens live so UI updates word-by-word, not all at once.
+        await _streamNanoResponse(text);
         _updateEmotion(ZeroEmotion.happy);
       } else if (isComplex) {
         _ringState = _ringState.copyWith(activeModel: ActiveModel.prime);
         notifyListeners();
-
         if (_primeService.isInitialized) {
-          final response = await _primeService.solveComplexProblem(prompt: text);
-          _updateResponse(response);
+          // FIX #5: Stream tokens live.
+          final responseBuffer = StringBuffer();
+          await for (final token in _primeService.solveComplexProblem(prompt: text)) {
+            responseBuffer.write(token);
+            _updateResponse(responseBuffer.toString());
+          }
+          final response = responseBuffer.toString().trim();
           await _ttsService.speak(response);
           _updateEmotion(ZeroEmotion.excited);
+        } else if (_nanoService.isLoaded) {
+          // Gemma not ready yet — fall back to Qwen for complex queries.
+          final bridge = _nanoService.getBridgeResponse();
+          _updateResponse(bridge);
+          await _ttsService.speak(bridge);
+          await _streamNanoResponse(text);
+          _updateEmotion(ZeroEmotion.happy);
         } else {
           final bridge = _nanoService.getBridgeResponse();
           _updateResponse(bridge);
           await _ttsService.speak(bridge);
-          _updateResponse("Zero Prime integration coming soon! 🚀");
         }
       } else if (_nanoService.isLoaded) {
+        // Fallback: unknown routing but model available
         _ringState = _ringState.copyWith(activeModel: ActiveModel.nano);
         notifyListeners();
-
-        final response = await _nanoService.ask(text);
-        _updateResponse(response);
-        await _ttsService.speak(response);
+        await _streamNanoResponse(text);
         _updateEmotion(ZeroEmotion.happy);
       } else {
-        // No model loaded — friendly fallback
+        // No model loaded — friendly fallback with hint to download
         final fallback = _personalityService.getNoModelResponse(text);
         _updateResponse(fallback);
         await _ttsService.speak(fallback);
@@ -289,24 +333,46 @@ class ZeroController with ChangeNotifier {
     }
   }
 
+  /// FIX #5: Stream Qwen tokens live to the chat UI.
+  /// UI shows each word as it's generated (like ChatGPT streaming).
+  /// TTS speaks the full response only after generation completes.
+  Future<void> _streamNanoResponse(String text) async {
+    final buffer = StringBuffer();
+    _conversationManager.addMessage('user', text);
+    _conversationManager.startStreamingAssistantMessage();
+
+    await for (final token in _nanoService.ask(text)) {
+      buffer.write(token);
+      _lastResponse = buffer.toString();
+      _conversationManager.appendStreamingToken(token);
+      notifyListeners(); // live word-by-word update
+    }
+
+    _conversationManager.finishStreamingAssistantMessage();
+    final fullResponse = buffer.toString().trim();
+    if (fullResponse.isNotEmpty) {
+      await _ttsService.speak(fullResponse);
+    }
+  }
+
   // ═══ RECORDING ═══
 
   Future<void> startRecording() async {
-    await _audioService.startPhoneMicRecording();
     _ringState = _ringState.copyWith(
       isRecording: true,
       currentEmotion: ZeroEmotion.listening
     );
     notifyListeners();
+    // Use the locale saved by the user in Settings.
+    // Defaults to en_IN on first launch (set in UserPreferencesService).
+    final locale = _preferencesService.sttLocale;
+    await _voicePipelineService.startListening(localeId: locale);
   }
 
   Future<void> stopRecording() async {
-    final audioBytes = await _audioService.stopPhoneMicRecording();
     _ringState = _ringState.copyWith(isRecording: false);
     notifyListeners();
-    if (audioBytes.isNotEmpty) {
-      await handleVoiceInput(audioBytes);
-    }
+    await _voicePipelineService.stopListening();
   }
 
   // ═══ INTERACTIONS ═══
@@ -352,7 +418,7 @@ class ZeroController with ChangeNotifier {
       final response = await _primeService.solveComplexProblem(
         prompt: "Analyze this scene",
         imagePath: "/simulated/image.jpg"
-      );
+      ).join("");
       _updateResponse(response);
       await _ttsService.speak(response);
       _updateEmotion(ZeroEmotion.happy);
@@ -372,11 +438,19 @@ class ZeroController with ChangeNotifier {
     notifyListeners();
   }
 
-  void _handleVoiceActivation() {
+  Future<void> _handleVoiceActivation() async {
     if (!_isProcessing) {
       _updateEmotion(ZeroEmotion.listening);
       _ringState = _ringState.copyWith(isRecording: true);
       notifyListeners();
+      
+      // Step 1: Greeting Acknowledgment
+      _updateResponse("Hey! How are you?");
+      await _ttsService.speak("Hey! How are you?", language: 'en-US');
+      
+      // Step 2: Automatically kick off the voice pipeline for command
+      _updateResponse("Listening for command...");
+      await startRecording();
     }
   }
 
