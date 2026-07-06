@@ -75,11 +75,19 @@ class RingStatusCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: ringState.activeModel == ActiveModel.prime ? AppColors.primary : AppColors.surfaceLight,
+                      color: ringState.activeModel == ActiveModel.prime
+                          ? AppColors.primary
+                          : ringState.activeModel == ActiveModel.agentic
+                              ? AppColors.accent
+                              : AppColors.surfaceLight,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      ringState.activeModel == ActiveModel.prime ? AppConstants.MODEL_PRIME_NAME : AppConstants.MODEL_NANO_NAME,
+                      ringState.activeModel == ActiveModel.prime
+                          ? AppConstants.MODEL_PRIME_NAME
+                          : ringState.activeModel == ActiveModel.agentic
+                              ? AppConstants.MODEL_AGENTIC_NAME
+                              : AppConstants.MODEL_NANO_NAME,
                       style: const TextStyle(fontSize: 10),
                     ),
                   )

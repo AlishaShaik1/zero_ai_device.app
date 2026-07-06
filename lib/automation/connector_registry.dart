@@ -1,17 +1,28 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'connector_catalog.dart';
 import 'models/connector_def.dart';
 
 /// Thin wrapper around the marketplace API for Gemma's gate-check logic.
 /// For full catalog UI use MarketplaceService instead.
 class ConnectorRegistry {
+<<<<<<< HEAD
   static const String _marketplaceUrl =
       'https://zero-connector-marketplace.vercel.app/api/connectors';
 
   List<ConnectorDef> _registry = [];
   bool get isEmpty => _registry.isEmpty;
   int get count => _registry.length;
+=======
+  final String _marketplaceUrl = 'https://your-vercel-marketplace.vercel.app/api/connectors';
+  List<ConnectorDef> _registry;
+
+  ConnectorRegistry({bool seedLocalCatalog = true})
+      : _registry = seedLocalCatalog
+            ? List<ConnectorDef>.from(ConnectorCatalog.defaultConnectors)
+            : [];
+>>>>>>> 9aaa7ef (updated file strcture and model development)
 
   /// Fetch and cache the connector catalog.
   /// The server returns { data: [...], total, limit, offset }.
@@ -91,6 +102,7 @@ class ConnectorRegistry {
             params: paramsMap,
           );
         }).toList();
+<<<<<<< HEAD
 
         return ConnectorDef(
           id: id,
@@ -112,6 +124,13 @@ class ConnectorRegistry {
       }
     } catch (e) {
       if (kDebugMode) print('[ConnectorRegistry] loadMarketplace error: $e');
+=======
+        if (kDebugMode) print("Loaded ${_registry.length} connectors from marketplace.");
+      }
+    } catch (e) {
+      if (kDebugMode) print("Failed to load marketplace: $e");
+      // Keep local default catalog if network fails.
+>>>>>>> 9aaa7ef (updated file strcture and model development)
     }
   }
 
@@ -133,10 +152,10 @@ class ConnectorRegistry {
       if (match.authStatus == AuthStatus.connected) {
         return {'status': 'proceed', 'connector': match};
       } else {
-        return {'status': 'stop', 'message': '\${match.displayName} isn\'t connected yet — want me to open setup?'};
+        return {'status': 'stop', 'message': '${match.displayName} isn\'t connected yet — want me to open setup?'};
       }
     }
     
-    return {'status': 'stop', 'message': 'I don\'t have \$targetEntity set up — is that an app I should know?'};
+    return {'status': 'stop', 'message': 'I don\'t have $targetEntity set up — is that an app I should know?'};
   }
 }

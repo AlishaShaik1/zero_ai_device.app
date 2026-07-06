@@ -38,9 +38,10 @@ Keep responses under 50 words always.
     }
   }
 
-  Future<String> ask(String userInput) async {
+  Stream<String> ask(String userInput) async* {
     if (!_isLoaded || _llama == null) {
-      return "Just waking up, give me a sec! ⚡";
+      yield "Just waking up, give me a sec! ⚡";
+      return;
     }
     try {
       final prompt = """<|im_start|>system
@@ -50,20 +51,28 @@ $userInput<|im_end|>
 <|im_start|>assistant
 """;
       _llama!.setPrompt(prompt);
-      String response = "";
       int tokenCount = 0;
       while (tokenCount < 80) {
-        var (token, done) = _llama!.getNext();
-        response += token;
-        tokenCount++;
-        if (done) break;
-        if (response.contains('<|im_end|>') || response.contains('\nUser:')) {
+        // FIX #4: Wrap synchronous getNext() in Future() so the event loop
+        // can process UI frames between each token — prevents screen freezing.
+        final (token, done) = await Future(() => _llama!.getNext());
+
+        // Clean end-of-sequence tokens before yielding
+        final cleaned = token
+            .replaceAll('<|im_end|>', '')
+            .replaceAll('\nUser:', '')
+            .replaceAll('<|im_start|>', '');
+
+        if (done || token.contains('<|im_end|>') || token.contains('\nUser:')) {
+          if (cleaned.isNotEmpty) yield cleaned;
           break;
         }
+
+        if (cleaned.isNotEmpty) yield cleaned;
+        tokenCount++;
       }
-      return response.replaceAll('<|im_end|>', '').replaceAll('\nUser:', '').trim();
     } catch (e) {
-      return "Oops, brain hiccup! Try again ✨";
+      yield "Oops, brain hiccup! Try again ✨";
     }
   }
 

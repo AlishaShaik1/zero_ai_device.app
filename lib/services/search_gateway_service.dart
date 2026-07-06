@@ -8,7 +8,7 @@ import '../models/search_result.dart';
 /// via the Zero Search Gateway (hosted on Render).
 ///
 /// SEARCH FLOW:
-///   [search(query)] → POST /search with X-API-Key: zerotech1234
+///   [search(query)] → POST /search with X-API-Key from AppConfig
 ///   → returns List<SearchResult>
 ///   → Caller formats answer as short TTS string + sends to ring OLED.
 class SearchGatewayService {
@@ -20,16 +20,12 @@ class SearchGatewayService {
   // ─── Config ───────────────────────────────────────────────────────────────
   static const Duration _timeout = Duration(seconds: 8);
   static const String _searchPath = '/search';
-  
-  // Hardcoded APP_ACCESS_KEY
-  static const String _apiKey = 'zerotech1234';
 
   // ─── Public API ───────────────────────────────────────────────────────────
 
   /// Call once at app start
   Future<void> init() async {
-    // No registration needed for direct APP_ACCESS_KEY
-    debugPrint('SearchGateway: init() done using hardcoded API key.');
+    debugPrint('SearchGateway: init() done using configured API key.');
   }
 
   /// Fetch search results for [query] from the gateway.
@@ -40,7 +36,7 @@ class SearchGatewayService {
       final response = await http.post(
         uri,
         headers: {
-          'X-API-Key': _apiKey,
+          'X-API-Key': AppConfig.searchGatewayApiKey,
           'Content-Type': 'application/json',
         },
         body: jsonEncode({'q': query}),

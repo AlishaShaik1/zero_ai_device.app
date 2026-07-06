@@ -1,23 +1,21 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../../config/constants.dart';
 
 /// Connects to the deployed Zero Search Gateway.
 /// Qwen outputs {"type": "search", "query": "..."} when it needs facts,
 /// and this service executes that search.
 class SearchService {
-  static const String _gatewayUrl = 'https://search-server-theta.vercel.app';
-  static const String _apiKey = 'zerotech1234';
-
   /// Search the gateway and return a concise answer.
   /// Returns null on failure (caller should say "couldn't find that").
   Future<SearchResult?> search(String query) async {
     try {
       final response = await http.post(
-        Uri.parse('$_gatewayUrl/search'),
+        Uri.parse('${AppConfig.searchGatewayUrl}/search'),
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': _apiKey,
+          'X-API-Key': AppConfig.searchGatewayApiKey,
         },
         body: json.encode({'q': query}),
       ).timeout(const Duration(seconds: 10));

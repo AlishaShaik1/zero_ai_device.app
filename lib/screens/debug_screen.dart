@@ -2,62 +2,81 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/zero_controller.dart';
 
-class DebugScreen extends StatelessWidget {
+class DebugScreen extends StatefulWidget {
   const DebugScreen({Key? key}) : super(key: key);
 
   @override
+  State<DebugScreen> createState() => _DebugScreenState();
+}
+
+class _DebugScreenState extends State<DebugScreen> {
+  @override
   Widget build(BuildContext context) {
     final controller = context.watch<ZeroController>();
+    final state = controller.ringState;
     
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Developer Tools', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Developer Debug', style: TextStyle(fontFamily: 'monospace', color: Colors.lightGreenAccent, fontSize: 16)),
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.lightGreenAccent),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Text('Simulate Actions', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white.withValues(alpha: 0.9))),
-          const SizedBox(height: 10),
-          _buildButton('Simulate Mic Listen', () => controller.startRecording()),
-          const SizedBox(height: 10),
-          _buildButton('Simulate Processing', () => controller.handleTextCommand("dummy complex task")),
-          const SizedBox(height: 10),
-          _buildButton('Simulate Stop Mic', () => controller.stopRecording()),
-          const Divider(height: 40, color: Colors.white24),
-          Text('Logs', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white.withValues(alpha: 0.9))),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-            ),
-            child: Text(
-              controller.lastResponse.isEmpty ? 'No recent logs' : controller.lastResponse,
-              style: const TextStyle(color: Color(0xFF34D399), fontFamily: 'monospace'),
-            ),
-          )
-        ],
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildTerminalBlock('SYSTEM STATE', [
+              'Connection: ${state.connectionState.name}',
+              'Emotion: ${state.currentEmotion.name}',
+              'Is Recording: ${state.isRecording}',
+              'Is Processing: ${controller.isProcessing}',
+              'Active Model: ${state.activeModel.name}',
+              'Air Mouse Active: ${state.isMouseModeActive}',
+            ]),
+            const SizedBox(height: 16),
+            _buildTerminalBlock('VOICE PIPELINE', [
+              'Wake Word Engine: ${controller.isWakeWordListening ? "ACTIVE" : "INACTIVE"}',
+              'STT Engine: ${controller.voicePipelineService.isListening ? "LISTENING" : "IDLE"}',
+              'Last Transcript: "${controller.voicePipelineService.recognizedWords}"',
+            ]),
+            const SizedBox(height: 16),
+            _buildTerminalBlock('ROUTING & MODELS', [
+              'Last Router Output: ${controller.debugRouting.isEmpty ? "N/A" : controller.debugRouting}',
+              'Qwen Nano: ${controller.lifecycleManager.qwenState.name.toUpperCase()}',
+              'Gemma Prime: ${controller.lifecycleManager.gemmaState.name.toUpperCase()}',
+              'TTS Engine: ${controller.lifecycleManager.ttsState.name.toUpperCase()}',
+            ]),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildButton(String label, VoidCallback onPressed) {
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF00C9C8).withValues(alpha: 0.15),
-        foregroundColor: const Color(0xFF00C9C8),
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        padding: const EdgeInsets.symmetric(vertical: 16),
+  Widget _buildTerminalBlock(String title, List<String> lines) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        border: Border.all(color: Colors.lightGreenAccent.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(8),
       ),
-      onPressed: onPressed,
-      child: Text(label),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('[$title]', style: const TextStyle(color: Colors.lightGreenAccent, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+          const Divider(color: Colors.lightGreenAccent),
+          ...lines.map((l) => Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text('> $l', style: const TextStyle(color: Colors.green, fontFamily: 'monospace', fontSize: 13)),
+          )),
+        ],
+      ),
     );
   }
 }

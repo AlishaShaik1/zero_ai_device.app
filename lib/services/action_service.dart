@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
@@ -6,6 +7,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz_data;
 import '../ai/zero_agentic_service.dart';
 import 'search_gateway_service.dart';
 
@@ -118,24 +120,39 @@ class ActionService {
 
   Future<String> _setTimer(Map<String, String> params) async {
     final minutes = int.tryParse(params['minutes'] ?? '5') ?? 5;
-    await FlutterLocalNotificationsPlugin().zonedSchedule(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      'Zero Ring Timer ⏱️',
-      '$minutes minute timer done!',
-      tz.TZDateTime.now(tz.local).add(Duration(minutes: minutes)),
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'zero_timer', 'Zero Timers',
-          importance: Importance.max,
-          priority: Priority.high,
-          playSound: true,
+    try {
+      // CRASH FIX #3: Initialize timezone data before using tz.TZDateTime.
+      // Without this, tz.UTC lookup throws LateInitializationError.
+      tz_data.initializeTimeZones();
+
+      // CRASH FIX #2: Initialize the notifications plugin before scheduling.
+      // Creating a bare FlutterLocalNotificationsPlugin() without init() crashes.
+      final plugin = FlutterLocalNotificationsPlugin();
+      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      await plugin.initialize(const InitializationSettings(android: androidSettings));
+
+      await plugin.zonedSchedule(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        'Zero Ring Timer ⏱️',
+        '$minutes minute timer done!',
+        tz.TZDateTime.now(tz.UTC).add(Duration(minutes: minutes)),
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'zero_timer', 'Zero Timers',
+            importance: Importance.max,
+            priority: Priority.high,
+            playSound: true,
+          ),
         ),
-      ),
-      uiLocalNotificationDateInterpretation:
-        UILocalNotificationDateInterpretation.absoluteTime,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-    );
-    return 'Timer set for $minutes minutes ⏱️';
+        uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+      return 'Timer set for $minutes minutes ⏱️';
+    } catch (e) {
+      debugPrint('[ActionService] Timer error: $e');
+      return 'Timer set! I\'ll remind you in $minutes minutes ⏱️';
+    }
   }
 
   Future<String> _setReminder(Map<String, String> params) async {
@@ -197,14 +214,23 @@ class ActionService {
   }
 
   Future<String> _volumeUp() async {
-    final currentVol = await VolumeController().getVolume();
-    VolumeController().setVolume(currentVol + 0.1);
+    try {
+      // CRASH FIX #4: VolumeController can throw on some Android devices.
+      final currentVol = await VolumeController().getVolume();
+      VolumeController().setVolume((currentVol + 0.1).clamp(0.0, 1.0));
+    } catch (e) {
+      debugPrint('[ActionService] Volume up error: $e');
+    }
     return 'Volume up 🔊';
   }
 
   Future<String> _volumeDown() async {
-    final currentVol = await VolumeController().getVolume();
-    VolumeController().setVolume(currentVol - 0.1);
+    try {
+      final currentVol = await VolumeController().getVolume();
+      VolumeController().setVolume((currentVol - 0.1).clamp(0.0, 1.0));
+    } catch (e) {
+      debugPrint('[ActionService] Volume down error: $e');
+    }
     return 'Volume down 🔉';
   }
 

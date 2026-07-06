@@ -168,10 +168,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     List<Permission> permissions = [
       Permission.microphone,
       Permission.camera,
-      Permission.bluetooth,
-      Permission.bluetoothConnect,
-      Permission.bluetoothScan,
-      Permission.location, // Required for BLE scanning on Android 11 and below
       Permission.notification, // For background services
     ];
     

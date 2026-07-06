@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 allprojects {
     repositories {
         google()
@@ -17,7 +19,7 @@ subprojects {
 }
 subprojects {
     plugins.withId("com.android.library") {
-        extensions.configure<com.android.build.gradle.LibraryExtension> {
+        extensions.configure<com.android.build.api.dsl.LibraryExtension> {
             if (namespace == null) {
                 namespace = "com.zerotech.zero_ring_app.${project.name.replace("-", "_")}"
             }
@@ -33,15 +35,13 @@ subprojects {
             }
         }
     }
+    tasks.withType<JavaCompile>().configureEach {
+        sourceCompatibility = JavaVersion.VERSION_17.toString()
+        targetCompatibility = JavaVersion.VERSION_17.toString()
+    }
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        kotlinOptions {
-            val javaTask = project.tasks.findByName("compileDebugJavaWithJavac") as? JavaCompile
-                ?: project.tasks.findByName("compileReleaseJavaWithJavac") as? JavaCompile
-            if (javaTask != null) {
-                jvmTarget = javaTask.targetCompatibility
-            } else {
-                jvmTarget = "1.8"
-            }
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
         }
     }
 }

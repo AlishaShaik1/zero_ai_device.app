@@ -31,15 +31,12 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"/>
 
     <application
-        android:label="Zero Ring"
         android:name="${applicationName}"
+        android:label="Zero Ring"
         android:icon="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config"
         android:requestLegacyExternalStorage="true">
@@ -71,6 +68,12 @@
             android:foregroundServiceType="dataSync"
             android:exported="false"/>
 
+        <!-- flutter_downloader service declaration for Android 14 compatibility -->
+        <service
+            android:name="vn.hunghd.flutterdownloader.DownloadedService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <!-- Notification Listener for reading notifications -->
         <service
             android:name=".ZeroNotificationService"
@@ -91,6 +94,16 @@
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/provider_paths"/>
+        </provider>
+
+        <!-- flutter_downloader initialization provider -->
+        <provider
+            android:name="vn.hunghd.flutterdownloader.FlutterDownloaderInitializer"
+            android:authorities="${applicationId}.flutter-downloader-init"
+            android:exported="false">
+            <meta-data
+                android:name="vn.hunghd.flutterdownloader.MAX_CONCURRENT_TASKS"
+                android:value="5" />
         </provider>
     </application>
 </manifest>
