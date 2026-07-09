@@ -48,6 +48,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final controller = context.watch<ZeroController>();
     final selectedLang = kSupportedLanguages.firstWhere(
       (l) => l.sttLocale == _selectedSttLocale,
       orElse: () => kSupportedLanguages.first,
@@ -75,16 +76,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSection('Voice & Language', [
             _buildLanguagePicker(selectedLang),
             _buildDivider(),
-            _buildInfoRow(
+            _buildToggleRow(
               icon: Icons.mic_rounded,
-              label: 'Speech Recognition',
-              value: selectedLang.label,
-            ),
-            _buildDivider(),
-            _buildInfoRow(
-              icon: Icons.volume_up_rounded,
-              label: 'Assistant Voice Language',
-              value: selectedLang.label,
+              title: 'Wake Word Activation',
+              subtitle: 'Listen for "Hey Zero" in background',
+              value: controller.preferencesService.isWakeWordEnabled,
+              onChanged: (val) => controller.toggleWakeWordEnabled(val),
             ),
           ]),
 
@@ -96,16 +93,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: Icons.psychology_rounded,
               title: 'Zero Prime Complex Reasoning',
               subtitle: 'Uses Gemma model for hard questions',
-              value: true,
-              onChanged: (_) {},
+              value: controller.preferencesService.isPrimeEnabled,
+              onChanged: (val) => controller.togglePrimeEnabled(val),
             ),
             _buildDivider(),
             _buildToggleRow(
               icon: Icons.search_rounded,
               title: 'Web Search Access',
               subtitle: 'Allow Zero to search the internet',
-              value: true,
-              onChanged: (_) {},
+              value: controller.preferencesService.isWebSearchEnabled,
+              onChanged: (val) => controller.toggleWebSearchEnabled(val),
             ),
           ]),
 
@@ -124,8 +121,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: Icons.update_rounded,
               title: 'Auto-update Models',
               subtitle: 'Download updates on Wi-Fi',
-              value: false,
-              onChanged: (_) {},
+              value: controller.preferencesService.isAutoUpdateEnabled,
+              onChanged: (val) => controller.toggleAutoUpdateEnabled(val),
             ),
           ]),
 

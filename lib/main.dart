@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_downloader/flutter_downloader.dart';
+
 import 'package:provider/provider.dart';
 import 'controllers/zero_controller.dart';
 import 'services/download_service.dart';
 import 'services/search_gateway_service.dart';
-<<<<<<< HEAD
 import 'services/marketplace_service.dart';
-=======
 import 'screens/home_screen.dart';
 import 'screens/download_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/debug_screen.dart';
->>>>>>> 9aaa7ef (updated file strcture and model development)
+
+import 'screens/splash_screen.dart';
+import 'screens/onboarding_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,14 +23,6 @@ void main() async {
     debugPrint('[FlutterError] ${details.exceptionAsString()}');
   };
   
-  try {
-    await FlutterDownloader.initialize(
-      debug: true,
-      ignoreSsl: true,
-    );
-  } catch (e) {
-    debugPrint('[ZeroApp] FlutterDownloader initialization failed: $e');
-  }
 
   await SearchGatewayService.instance.init();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -43,20 +35,17 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => DownloadService()),
-<<<<<<< HEAD
         ChangeNotifierProvider.value(value: MarketplaceService.instance),
-=======
         ChangeNotifierProvider(
           create: (_) {
             final controller = ZeroController();
             // BUG FIX: initState() is async but create() is sync.
             // Schedule it on the next microtask so it runs properly async
-            // without blocking the widget tree construction.
-            Future.microtask(() => controller.initState());
+            // without blocking the widget tree construction or causing a build crash.
+            Future.delayed(Duration.zero, () => controller.initState());
             return controller;
           },
         ),
->>>>>>> 9aaa7ef (updated file strcture and model development)
       ],
       child: const ZeroApp(),
     ),
@@ -76,8 +65,11 @@ class ZeroApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF070710),
         fontFamily: 'Inter',
       ),
-      initialRoute: '/downloads',
+      initialRoute: '/',
       routes: {
+        '/': (context) => const SplashScreen(),
+        '/onboarding': (context) => const OnboardingScreen(),
+        '/download': (context) => const DownloadScreen(),
         '/downloads': (context) => const DownloadScreen(),
         '/home': (context) => const HomeScreen(),
         '/settings': (context) => const SettingsScreen(),

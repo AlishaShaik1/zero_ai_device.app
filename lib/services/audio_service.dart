@@ -122,13 +122,14 @@ class AudioService {
           final words = result.recognizedWords.toLowerCase();
           if (words.contains('hey zero') ||
               words.contains('hey hero') ||
-              words.contains('zero')) {
+              words.contains('ok zero') ||
+              words.contains('hello zero')) {
             debugPrint('Wake word detected via STT!');
             _speechToText.stop();
             _isWakeWordListening = false;
             _onWakeWordDetected?.call();
-            // Restart wake word listening after a short delay
-            Future.delayed(const Duration(seconds: 3), resumeWakeWordEngine);
+            // Do not auto-resume here; the controller will resume it
+            // when it is done processing the command.
           }
         },
       ).then((_) {
@@ -148,7 +149,7 @@ class AudioService {
   }
 
   void stopWakeWordEngine() {
-    _speechToText.stop();
+    _speechToText.cancel();
     _isWakeWordListening = false;
   }
 

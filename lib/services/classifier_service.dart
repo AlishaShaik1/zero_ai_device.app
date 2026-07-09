@@ -38,13 +38,16 @@ class ClassifierService {
   Interpreter? get interpreter => _interpreter;
   Map<String, int> get vocab => _vocab;
   int get maxSequenceLength => maxLen;
+  /// True once both tokenizer.json and model.tflite loaded successfully.
+  bool get isLoaded => _interpreter != null && _vocab.isNotEmpty;
 
   Future<void> loadModel() async {
+    // ── Stage 1: vocab / tokenizer ───────────────────────────────────────────
     try {
-      // 1. Load vocab from tokenizer.json
       final jsonStr = await rootBundle.loadString('assets/ml/tokenizer.json');
       final jsonObj = json.decode(jsonStr);
-      Map<String, dynamic> vocabRaw = jsonObj['model']['vocab'];
+      final Map<String, dynamic> vocabRaw =
+          jsonObj['model']['vocab'] as Map<String, dynamic>;
       for (var entry in vocabRaw.entries) {
         final val = entry.value as int;
         _vocab[entry.key] = val;
@@ -53,27 +56,38 @@ class ClassifierService {
       _clsId = _vocab['[CLS]'] ?? 101;
       _sepId = _vocab['[SEP]'] ?? 102;
       _unkId = _vocab['[UNK]'] ?? 100;
+      debugPrint('[Classifier] Vocab loaded: ${_vocab.length} tokens');
+    } catch (e) {
+      debugPrint('[Classifier] ❌ tokenizer.json missing or malformed — '
+          'classifier will default to COMPLEX routing. Error: $e');
+      return; // no point loading the model without a vocab
+    }
 
-      // 2. Load TFLite model
+    // ── Stage 2: TFLite model ────────────────────────────────────────────────
+    try {
       _interpreter = await Interpreter.fromAsset('assets/ml/model.tflite');
+      debugPrint('[Classifier] ✅ MobileBERT classifier ready.');
       if (kDebugMode) {
-        print("✅ Zero AI MobileBERT Classifier loaded!");
-        print("--- MODEL TENSOR DIAGNOSTICS ---");
+        debugPrint('--- MODEL TENSOR DIAGNOSTICS ---');
         for (var tensor in _interpreter!.getInputTensors()) {
-          print("Input: ${tensor.name} | Shape: ${tensor.shape} | Type: ${tensor.type}");
+          debugPrint(
+              'Input: ${tensor.name} | Shape: ${tensor.shape} | Type: ${tensor.type}');
         }
         for (var tensor in _interpreter!.getOutputTensors()) {
-          print("Output: ${tensor.name} | Shape: ${tensor.shape} | Type: ${tensor.type}");
+          debugPrint(
+              'Output: ${tensor.name} | Shape: ${tensor.shape} | Type: ${tensor.type}');
         }
-        print("--------------------------------");
-        
-        // Run automatic test to verify int32/int64
+        debugPrint('--------------------------------');
         await _runSelfTest();
       }
+    } on ArgumentError catch (e) {
+      // Thrown when the .tflite file is found but is not a valid FlatBuffer.
+      debugPrint('[Classifier] ❌ model.tflite is corrupt or wrong format: $e');
     } catch (e) {
-      if (kDebugMode) {
-        print("❌ Failed to load classifier: $e");
-      }
+      // Covers UnsatisfiedLinkError (libtensorflowlite.so missing from APK),
+      // FileNotFoundException (asset not bundled), and any other TFLite error.
+      debugPrint('[Classifier] ❌ Failed to load TFLite interpreter — '
+          'likely a native .so linkage issue or missing asset. Error: $e');
     }
   }
 

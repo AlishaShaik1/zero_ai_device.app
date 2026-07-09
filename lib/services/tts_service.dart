@@ -39,8 +39,14 @@ class TtsService {
 
 
   String _cleanText(String text) {
+    // Remove LLM control tokens that may leak through from Qwen or Gemma
     // Remove emojis and markdown symbols for cleaner TTS output
     return text
+        .replaceAll('<|im_start|>', '')
+        .replaceAll('<|im_end|>', '')
+        .replaceAll('<start_of_turn>', '')
+        .replaceAll('<end_of_turn>', '')
+        .replaceAll(RegExp(r'\n(User|user|assistant|system):'), '')
         .replaceAll(RegExp(r'[\u{1F300}-\u{1F9FF}]', unicode: true), '')
         .replaceAll(RegExp(r'[*_`#~]'), '')
         .replaceAll(RegExp(r'\s+'), ' ')

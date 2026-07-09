@@ -6,51 +6,6 @@ import 'models/connector_def.dart';
 /// https://github.com/modelcontextprotocol/servers
 class ConnectorCatalog {
   static final List<ConnectorDef> defaultConnectors = [
-<<<<<<< HEAD
-=======
-    // --- TEST/CORE: Gemini ---
-    ConnectorDef(
-      id: "gemini_app",
-      displayName: "Gemini",
-      aliases: ["gemini", "google gemini"],
-      category: ConnectorCategory.ai,
-      type: ConnectorType.apiOauth,
-      feasibility: FeasibilityTier.selfServe,
-      description: "Google Gemini assistant and model connector.",
-      availableActions: [
-        ConnectorAction(
-          name: "chat",
-          description: "Send a prompt and receive a response.",
-          params: {
-            "prompt": ParamDef(type: "string", description: "User prompt"),
-          },
-        ),
-      ],
-      authStatus: AuthStatus.connected,
-    ),
-
-    // --- SEARCH GATEWAY ---
-    ConnectorDef(
-      id: "zero_search",
-      displayName: "Zero Search",
-      aliases: ["search", "web", "internet", "google search", "find out"],
-      category: ConnectorCategory.utilities,
-      type: ConnectorType.apiOauth, // Or apiKey
-      feasibility: FeasibilityTier.selfServe,
-      description: "Search the web for real-time facts, prices, and news using the Zero Search Gateway.",
-      availableActions: [
-        ConnectorAction(
-          name: "search_web",
-          description: "Search the internet for a query.",
-          params: {
-            "query": ParamDef(type: "string", description: "The search query"),
-          },
-          requiresAuth: false, // Assuming the app uses its internal key
-        ),
-      ],
-      authStatus: AuthStatus.connected, // Implicitly connected
-    ),
->>>>>>> 9aaa7ef (updated file strcture and model development)
 
     // ─── BUILT-IN ────────────────────────────────────────────────────────────
 

@@ -29,13 +29,18 @@ class _ChatAreaState extends State<ChatArea> {
   }
 
   void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent + 100, // Overscroll slightly for new items
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
-    }
+    // Use a post-frame callback so the scroll happens AFTER the ListView
+    // has laid out the new message. Without this, the final completed message
+    // can end up below the visible scroll area.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent + 100, // Overscroll slightly for new items
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
   }
 
   @override

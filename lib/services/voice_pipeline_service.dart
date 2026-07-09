@@ -46,8 +46,20 @@ class VoicePipelineService with ChangeNotifier {
 
   Future<void> startListening({String localeId = "en_IN"}) async {
     if (!_speechToText.isAvailable) {
-      debugPrint('[STT] Speech recognition not available on this device.');
-      return;
+      debugPrint('[STT] Speech recognition not initialized, attempting to initialize...');
+      try {
+        final available = await _speechToText.initialize(
+          onError: (error) => debugPrint('[STT] Error: $error'),
+          onStatus: (status) => debugPrint('[STT] Status: $status'),
+        );
+        if (!available) {
+          debugPrint('[STT] Speech recognition initialization failed.');
+          return;
+        }
+      } catch (e) {
+        debugPrint('[STT] Speech recognition initialization error: $e');
+        return;
+      }
     }
 
     _isListening = true;

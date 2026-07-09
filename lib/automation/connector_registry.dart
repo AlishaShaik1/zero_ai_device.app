@@ -7,22 +7,18 @@ import 'models/connector_def.dart';
 /// Thin wrapper around the marketplace API for Gemma's gate-check logic.
 /// For full catalog UI use MarketplaceService instead.
 class ConnectorRegistry {
-<<<<<<< HEAD
   static const String _marketplaceUrl =
       'https://zero-connector-marketplace.vercel.app/api/connectors';
 
   List<ConnectorDef> _registry = [];
   bool get isEmpty => _registry.isEmpty;
   int get count => _registry.length;
-=======
-  final String _marketplaceUrl = 'https://your-vercel-marketplace.vercel.app/api/connectors';
-  List<ConnectorDef> _registry;
 
-  ConnectorRegistry({bool seedLocalCatalog = true})
-      : _registry = seedLocalCatalog
-            ? List<ConnectorDef>.from(ConnectorCatalog.defaultConnectors)
-            : [];
->>>>>>> 9aaa7ef (updated file strcture and model development)
+  ConnectorRegistry({bool seedLocalCatalog = true}) {
+    if (seedLocalCatalog) {
+      _registry = List<ConnectorDef>.from(ConnectorCatalog.defaultConnectors);
+    }
+  }
 
   /// Fetch and cache the connector catalog.
   /// The server returns { data: [...], total, limit, offset }.
@@ -102,7 +98,6 @@ class ConnectorRegistry {
             params: paramsMap,
           );
         }).toList();
-<<<<<<< HEAD
 
         return ConnectorDef(
           id: id,
@@ -124,13 +119,7 @@ class ConnectorRegistry {
       }
     } catch (e) {
       if (kDebugMode) print('[ConnectorRegistry] loadMarketplace error: $e');
-=======
-        if (kDebugMode) print("Loaded ${_registry.length} connectors from marketplace.");
-      }
-    } catch (e) {
-      if (kDebugMode) print("Failed to load marketplace: $e");
       // Keep local default catalog if network fails.
->>>>>>> 9aaa7ef (updated file strcture and model development)
     }
   }
 

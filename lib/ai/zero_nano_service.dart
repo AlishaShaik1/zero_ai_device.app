@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
@@ -5,10 +6,14 @@ import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 class ZeroNanoService with ChangeNotifier {
   bool _isLoaded = false;
   bool _isLoading = false;
-  Llama? _llama;
+  String? _lastLoadError;
+  
+  LlamaEngine? _engine;
+  EngineSession? _session;
   
   bool get isLoaded => _isLoaded;
   bool get isLoading => _isLoading;
+  String? get lastLoadError => _lastLoadError;
 
   static const String SYSTEM_PROMPT = """
 You are Zero, a cheerful AI companion living inside a smart
@@ -26,11 +31,27 @@ Keep responses under 50 words always.
     _isLoading = true;
     notifyListeners();
     try {
-      _llama = Llama(modelPath);
+      debugPrint('[Zero Nano] Attempting to load native model from path: $modelPath');
+      
+      if (Platform.isAndroid) {
+        _engine = await LlamaEngine.spawn(
+          libraryPath: 'libllama.so',
+          modelParams: ModelParams(path: modelPath),
+          contextParams: const ContextParams(nCtx: 2048),
+        );
+      } else {
+        _engine = await LlamaEngine.spawnFromProcess(
+          modelParams: ModelParams(path: modelPath),
+          contextParams: const ContextParams(nCtx: 2048),
+        );
+      }
+      
       _isLoaded = true;
-      print('Zero Nano loaded successfully');
+      _lastLoadError = null;
+      debugPrint('[Zero Nano] ✅ Native Llama.cpp engine loaded successfully from: $modelPath');
     } catch (e) {
-      print('Zero Nano load error: $e');
+      _lastLoadError = e.toString();
+      debugPrint('[Zero Nano] ❌ Native model load error at $modelPath: $e');
       _isLoaded = false;
     } finally {
       _isLoading = false;
@@ -39,40 +60,43 @@ Keep responses under 50 words always.
   }
 
   Stream<String> ask(String userInput) async* {
-    if (!_isLoaded || _llama == null) {
+    if (!_isLoaded || _engine == null) {
+      debugPrint('[Zero Nano] ⚠️ Cannot ask, model is not loaded yet!');
       yield "Just waking up, give me a sec! ⚡";
       return;
     }
+    debugPrint('[Zero Nano] ⚡ Sending prompt to native LLM engine: "$userInput"');
+    
+    EngineSession? session;
     try {
+      session = await _engine!.createSession();
       final prompt = """<|im_start|>system
 $SYSTEM_PROMPT<|im_end|>
 <|im_start|>user
 $userInput<|im_end|>
 <|im_start|>assistant
 """;
-      _llama!.setPrompt(prompt);
-      int tokenCount = 0;
-      while (tokenCount < 80) {
-        // FIX #4: Wrap synchronous getNext() in Future() so the event loop
-        // can process UI frames between each token — prevents screen freezing.
-        final (token, done) = await Future(() => _llama!.getNext());
 
-        // Clean end-of-sequence tokens before yielding
-        final cleaned = token
-            .replaceAll('<|im_end|>', '')
-            .replaceAll('\nUser:', '')
-            .replaceAll('<|im_start|>', '');
+      await for (final event in session.generate(
+        prompt: prompt,
+        maxTokens: 512,
+      )) {
+        if (event is TokenEvent) {
+          final cleaned = event.text
+              .replaceAll('<|im_end|>', '')
+              .replaceAll('\nUser:', '')
+              .replaceAll('<|im_start|>', '');
 
-        if (done || token.contains('<|im_end|>') || token.contains('\nUser:')) {
           if (cleaned.isNotEmpty) yield cleaned;
-          break;
         }
-
-        if (cleaned.isNotEmpty) yield cleaned;
-        tokenCount++;
       }
     } catch (e) {
+      debugPrint('[Zero Nano] ❌ Generation error: $e');
       yield "Oops, brain hiccup! Try again ✨";
+    } finally {
+      if (session != null) {
+        await session.dispose();
+      }
     }
   }
 
@@ -114,7 +138,7 @@ $userInput<|im_end|>
 
   @override
   void dispose() {
-    _llama?.dispose();
+    _engine?.dispose();
     _isLoaded = false;
     super.dispose();
   }

@@ -31,13 +31,6 @@ class _DownloadScreenState extends State<DownloadScreen>
       vsync: this,
       duration: const Duration(milliseconds: 3000),
     )..repeat(reverse: true);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final service = context.read<DownloadService>();
-      if (!service.allDownloaded && !service.isDownloading) {
-        service.downloadAll();
-      }
-    });
   }
 
   @override
@@ -182,35 +175,49 @@ class _DownloadScreenState extends State<DownloadScreen>
                               
                               const SizedBox(height: 20),
                               
-                              AnimatedOpacity(
-                                opacity: service.allDownloaded ? 1.0 : 0.0,
-                                duration: const Duration(milliseconds: 600),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                                  child: SizedBox(
-                                    width: double.infinity,
-                                    height: 52,
-                                    child: ElevatedButton(
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 40),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  height: 52,
+                                  child: ElevatedButton(
                                       onPressed: service.allDownloaded
-                                          ? () => Navigator.pushReplacementNamed(
-                                              context, '/home')
-                                          : null,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.white,
-                                        foregroundColor: const Color(0xFF070710),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(26),
-                                        ),
-                                        elevation: 0,
+                                          ? () => Navigator.pushReplacementNamed(context, '/home')
+                                          : service.isDownloading
+                                              ? () => service.cancelAll()
+                                              : () => service.downloadAll(),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: service.allDownloaded
+                                          ? Colors.white
+                                          : service.isDownloading
+                                              ? Colors.white.withValues(alpha: 0.1)
+                                              : const Color(0xFF00C9C8),
+                                      foregroundColor: service.isDownloading
+                                          ? Colors.white
+                                          : const Color(0xFF070710),
+                                      disabledBackgroundColor: Colors.white10,
+                                      disabledForegroundColor: Colors.white30,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(26),
                                       ),
-                                      child: const Text(
-                                        'Get Started',
+                                      elevation: 0,
+                                    ),
+                                      child: Text(
+                                        service.allDownloaded
+                                            ? 'Get Started'
+                                            : service.isDownloading
+                                                ? 'Pause Download ($pct%)'
+                                                : 'Start Download',
                                         style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.1,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.1,
+                                          color: service.allDownloaded
+                                              ? const Color(0xFF070710)
+                                              : service.isDownloading
+                                                  ? Colors.white
+                                                  : const Color(0xFF070710),
                                         ),
-                                      ),
                                     ),
                                   ),
                                 ),
@@ -221,15 +228,28 @@ class _DownloadScreenState extends State<DownloadScreen>
                               if (!service.allDownloaded)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 32),
-                                  child: Text(
-                                    service.statusMessage.isNotEmpty
-                                        ? service.statusMessage
-                                        : 'Download continues in the background',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.white.withValues(alpha: 0.2),
-                                      letterSpacing: 0.1,
-                                    ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        service.statusMessage.isNotEmpty
+                                            ? service.statusMessage
+                                            : 'Waiting to start...',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.white.withValues(alpha: 0.5),
+                                          letterSpacing: 0.1,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Please keep the app open while downloading.',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.white.withValues(alpha: 0.25),
+                                          letterSpacing: 0.1,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                             ],
@@ -493,7 +513,7 @@ class _DownloadScreenState extends State<DownloadScreen>
                     Text(
                       isVerifying 
                           ? 'Checking SHA-256 integrity...'
-                          : 'Downloading model... ${item.downloadSpeedMBps > 0 ? "(${item.downloadSpeedMBps.toStringAsFixed(1)} MB/s)" : ""}',
+                          : '${(item.fileSizeMB * item.progress).toStringAsFixed(1)} MB / ${item.fileSizeMB.toStringAsFixed(0)} MB  •  ${item.downloadSpeedMBps > 0 ? "${item.downloadSpeedMBps.toStringAsFixed(1)} MB/s" : "Calculating..."}',
                       style: TextStyle(
                         color: (isVerifying ? const Color(0xFFA855F7) : const Color(0xFF00C9C8)).withValues(alpha: 0.8),
                         fontSize: 11,

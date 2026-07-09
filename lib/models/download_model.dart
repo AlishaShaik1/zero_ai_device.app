@@ -15,6 +15,8 @@ class ModelDownloadItem {
   double downloadSpeedMBps; // for UI display
   String? errorMessage;
   int retryCount;
+  int lastProgress = 0;
+  DateTime lastProgressTime = DateTime.now();
 
   ModelDownloadItem({
     required this.id,
@@ -39,7 +41,7 @@ List<ModelDownloadItem> get requiredModels {
       displayName: 'Qwen 3 0.6B GGUF (Lightweight Reasoning)',
       url: AppConstants.URL_QWEN,
       fileName: AppConstants.FILE_QWEN,
-      fileSizeMB: 804,
+      fileSizeMB: 610,
     ),
     ModelDownloadItem(
       id: 'gemma',
@@ -48,12 +50,12 @@ List<ModelDownloadItem> get requiredModels {
       fileName: AppConstants.FILE_GEMMA,
       fileSizeMB: 5400,
     ),
-    ModelDownloadItem(
-      id: 'whisper_medium',
-      displayName: 'Hearing: Whisper Medium (Transcribe + Translate)',
-      url: AppConstants.URL_STT_WHISPER_MEDIUM,
-      fileName: AppConstants.FILE_STT_WHISPER_MEDIUM,
-      fileSizeMB: 1533,
-    ),
+    // ModelDownloadItem(
+    //   id: 'whisper_medium',
+    //   displayName: 'Hearing: Whisper Medium (Transcribe + Translate)',
+    //   url: AppConstants.URL_STT_WHISPER_MEDIUM,
+    //   fileName: AppConstants.FILE_STT_WHISPER_MEDIUM,
+    //   fileSizeMB: 1533,
+    // ),
   ];
 }

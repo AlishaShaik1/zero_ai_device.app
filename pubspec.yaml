@@ -29,7 +29,7 @@ dependencies:
   flutter_animate: ^4.5.0
   google_fonts: ^6.2.1
   wakelock_plus: ^1.2.1
-  llama_cpp_dart: ^0.2.2
+  llama_cpp_dart: ^0.9.0-dev.8
   flutter_accessibility_service: any
   workmanager: ^0.7.0
   ffi: ^2.1.0
@@ -38,7 +38,7 @@ dependencies:
 
   flutter_phone_direct_caller: ^2.1.1
   open_file: ^3.3.2
-  receive_sharing_intent: ^1.8.0
+  receive_sharing_intent: 1.8.1
   volume_controller: ^2.0.7
   screen_brightness: ^0.2.2+1
   connectivity_plus: ^6.0.3
