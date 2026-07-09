@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
@@ -9,7 +10,6 @@ class ZeroPrimeService {
   String? _lastLoadError;
   
   LlamaEngine? _engine;
-  EngineSession? _session;
 
   bool get isInitialized => _isInitialized;
   String? get lastLoadError => _lastLoadError;
@@ -26,16 +26,17 @@ class ZeroPrimeService {
         return;
       }
 
+      final threads = max(1, Platform.numberOfProcessors - 2);
       if (Platform.isAndroid) {
         _engine = await LlamaEngine.spawn(
           libraryPath: 'libllama.so',
           modelParams: ModelParams(path: modelPath),
-          contextParams: const ContextParams(nCtx: 4096),
+          contextParams: ContextParams(nCtx: 4096, nThreads: threads),
         );
       } else {
         _engine = await LlamaEngine.spawnFromProcess(
           modelParams: ModelParams(path: modelPath),
-          contextParams: const ContextParams(nCtx: 4096),
+          contextParams: ContextParams(nCtx: 4096, nThreads: threads),
         );
       }
       

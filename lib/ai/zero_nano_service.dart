@@ -9,23 +9,11 @@ class ZeroNanoService with ChangeNotifier {
   String? _lastLoadError;
   
   LlamaEngine? _engine;
-  EngineSession? _session;
   
   bool get isLoaded => _isLoaded;
   bool get isLoading => _isLoading;
   String? get lastLoadError => _lastLoadError;
 
-  static const String SYSTEM_PROMPT = """
-You are Zero, a cheerful AI companion living inside a smart
-ring worn on the user's finger. Created by Zero Tech.
-Personality: playful, warm, helpful, slightly mischievous.
-Speak in SHORT sentences — max 2 sentences for simple
-questions, 3 for complex. Always end with one relevant emoji.
-When thinking say 'hmm' or 'let me check'.
-Address user as 'your human' or by name if known.
-You are a companion, not just an assistant.
-Keep responses under 50 words always.
-""";
 
   Future<void> initialize(String modelPath) async {
     _isLoading = true;
@@ -33,16 +21,17 @@ Keep responses under 50 words always.
     try {
       debugPrint('[Zero Nano] Attempting to load native model from path: $modelPath');
       
+      final threads = max(1, Platform.numberOfProcessors - 2);
       if (Platform.isAndroid) {
         _engine = await LlamaEngine.spawn(
           libraryPath: 'libllama.so',
           modelParams: ModelParams(path: modelPath),
-          contextParams: const ContextParams(nCtx: 2048),
+          contextParams: ContextParams(nCtx: 2048, nThreads: threads),
         );
       } else {
         _engine = await LlamaEngine.spawnFromProcess(
           modelParams: ModelParams(path: modelPath),
-          contextParams: const ContextParams(nCtx: 2048),
+          contextParams: ContextParams(nCtx: 2048, nThreads: threads),
         );
       }
       
@@ -70,9 +59,7 @@ Keep responses under 50 words always.
     EngineSession? session;
     try {
       session = await _engine!.createSession();
-      final prompt = """<|im_start|>system
-$SYSTEM_PROMPT<|im_end|>
-<|im_start|>user
+      final prompt = """<|im_start|>user
 $userInput<|im_end|>
 <|im_start|>assistant
 """;
