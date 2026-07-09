@@ -96,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       emotion: state.currentEmotion,
                       isRecording: state.isRecording,
                       isProcessing: controller.isProcessing,
-                    ).animate().scale(duration: 800.ms, curve: Curves.easeOutBack),
+                    ).animate(key: const ValueKey('orb_anim')).scale(duration: 800.ms, curve: Curves.easeOutBack),
                   ),
                 ),
                 
@@ -119,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           height: 1.4,
                         ),
                         textAlign: TextAlign.center,
-                      ).animate().fade().slideY(begin: 0.2, end: 0),
+                      ).animate(key: const ValueKey('transcription_anim')).fade().slideY(begin: 0.2, end: 0),
                     );
                   },
                 ),
@@ -156,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   state: state,
                   onKeyboardTap: _toggleKeyboard,
                   onSettingsTap: () => Navigator.pushNamed(context, '/settings'),
-                ).animate().fade().slideY(begin: 0.5, end: 0, curve: Curves.easeOutCubic),
+                ).animate(key: const ValueKey('control_bar_anim')).fade().slideY(begin: 0.5, end: 0, curve: Curves.easeOutCubic),
               ),
             ),
         ],
