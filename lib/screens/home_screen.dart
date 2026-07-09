@@ -29,6 +29,12 @@ class _HomeScreenState extends State<HomeScreen> {
       statusBarIconBrightness: Brightness.light,
       systemNavigationBarColor: Colors.transparent,
     ));
+
+    // Safely trigger deferred hardware, bluetooth and wake-word init
+    // once permissions are ready and HomeScreen is entered.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ZeroController>().initializeHardwareAndModels();
+    });
   }
 
   @override
@@ -80,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
             bottom: false,
             child: Column(
               children: [
-                _buildTopBar(isConnected),
+                _buildTopBar(isConnected, controller),
                 
                 // Orb Area (Top 40%)
                 Expanded(
@@ -158,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTopBar(bool isConnected) {
+  Widget _buildTopBar(bool isConnected, ZeroController controller) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       child: Row(
@@ -181,10 +187,28 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          // Debug hidden access - double tap the status
-          GestureDetector(
-            onDoubleTap: () => Navigator.pushNamed(context, '/debug'),
-            child: Icon(Icons.info_outline_rounded, color: Colors.white.withValues(alpha: 0.2), size: 20),
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () => controller.togglePreferredModel(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    controller.preferredModel == ActiveModel.nano ? 'Model: Qwen' : 'Model: Gemma',
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              GestureDetector(
+                onDoubleTap: () => Navigator.pushNamed(context, '/debug'),
+                child: Icon(Icons.info_outline_rounded, color: Colors.white.withValues(alpha: 0.2), size: 20),
+              ),
+            ],
           ),
         ],
       ),

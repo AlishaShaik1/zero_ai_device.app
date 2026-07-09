@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/ring_state.dart';
 import '../services/ble_service.dart';
 import '../services/audio_service.dart';
@@ -17,6 +18,7 @@ import '../services/voice_pipeline_service.dart';
 import '../services/translation_service.dart';
 import '../services/conversation_manager.dart';
 import '../services/user_preferences_service.dart';
+import '../utils/constants.dart';
 
 class ZeroController with ChangeNotifier {
   RingState _ringState = RingState.initial();
@@ -40,6 +42,7 @@ class ZeroController with ChangeNotifier {
   String _lastResponse = "";
   String _debugRouting = "";
   bool _isProcessing = false;
+  ActiveModel _preferredModel = ActiveModel.nano;
   final List<StreamSubscription> _subs = [];
   Timer? _idleBehaviorTimer;
 
@@ -47,6 +50,25 @@ class ZeroController with ChangeNotifier {
   String get lastResponse => _lastResponse;
   String get debugRouting => _debugRouting;
   bool get isProcessing => _isProcessing;
+  ActiveModel get preferredModel => _preferredModel;
+
+  void togglePreferredModel() {
+    _preferredModel = _preferredModel == ActiveModel.nano 
+        ? ActiveModel.prime 
+        : ActiveModel.nano;
+    final modelName = _preferredModel == ActiveModel.nano ? "Qwen" : "Gemma";
+    
+    // Clear chat history to prevent KV cache/prompt contamination between different architectures
+    _conversationManager.clear();
+    
+    final message = "Switched to $modelName. Ready to chat! ⚡";
+    _conversationManager.addMessage('assistant', message);
+    _updateResponse(message);
+    _ttsService.speak("Model changed to $modelName");
+    
+    notifyListeners();
+  }
+
   ClassifierService get classifierService => _classifierService;
   PersonalityService get personalityService => _personalityService;
   bool get isWakeWordListening => _audioService.isWakeWordListening;
@@ -58,23 +80,41 @@ class ZeroController with ChangeNotifier {
   ZeroController() {
     _lifecycleManager = ModelLifecycleManager(_nanoService, _primeService, _ttsService);
     _voicePipelineService = VoicePipelineService(
-      onCommandRecognized: handleTextCommand,
+      onCommandRecognized: (text) => handleTextCommand(text, isVoice: true),
       translationService: _translationService,
       conversationManager: _conversationManager,
       ttsService: _ttsService,
     );
   }
 
+  bool _isHardwareInitialized = false;
+  bool get isHardwareInitialized => _isHardwareInitialized;
+
+  /// Lightweight initialization of local data settings only at boot.
+  /// Does NOT touch hardware (mic, TTS, AI) to prevent permissions security crashes.
   Future<void> initState() async {
     try {
-
-      // 0. Load user preferences (language, etc.) before anything else
+      // Load user preferences (language, etc.)
       await _preferencesService.init();
-
-      // 1. Init personality system
+      // Init personality system
       await _personalityService.initialize();
+      // Set greeting response
+      _lastResponse = _personalityService.getGreeting();
+      notifyListeners();
+    } catch(e) {
+      debugPrint('[ZeroController] Basic preferences boot error: $e');
+    }
+  }
 
-      // 2. Init TTS — apply saved language
+  /// Initializes hardware-dependent services (TTS, STT, Wake-Word, BLE).
+  /// Safe to call after onboarding permissions are granted.
+  Future<void> initializeHardwareAndModels() async {
+    if (_isHardwareInitialized) return;
+    _isHardwareInitialized = true;
+    debugPrint('[ZeroController] Initializing hardware and models...');
+
+    try {
+      // 1. Init TTS
       try {
         await _ttsService.initialize();
         await _ttsService.setLanguage(_preferencesService.selectedLanguage.ttsLocale);
@@ -82,7 +122,7 @@ class ZeroController with ChangeNotifier {
         debugPrint('[ZeroController] TTS initialization failed: $e');
       }
       
-      // 3. Init Agentic & Prime
+      // 2. Init Agentic & Prime
       try {
         await _agenticService.initialize();
       } catch (e) {
@@ -93,27 +133,19 @@ class ZeroController with ChangeNotifier {
       } catch (e) {
         debugPrint('[ZeroController] Prime service initialization failed: $e');
       }
-      
-      // 4. Load classifier
-      try {
-        await _classifierService.loadModel();
-      } catch (e) {
-        debugPrint('[ZeroController] Classifier model load failed: $e');
+
+      // 3. Initialize Wake-Word engine (requires microphone permission)
+      if (_preferencesService.isWakeWordEnabled) {
+        try {
+          await _audioService.initWakeWordEngine(() {
+            _handleVoiceActivation();
+          });
+        } catch (e) {
+          debugPrint('[ZeroController] Wake-word engine initialization failed: $e');
+        }
       }
 
-      // 5. Initialize Wake-Word engine
-      try {
-        await _audioService.initWakeWordEngine(() {
-          _handleVoiceActivation();
-        });
-      } catch (e) {
-        debugPrint('[ZeroController] Wake-word engine initialization failed: $e');
-      }
-
-      // 6. Set greeting response
-      _lastResponse = _personalityService.getGreeting();
-
-      // 7. Start BLE scan
+      // 4. Start BLE scan
       _subs.add(_bleService.connectionStream.listen((state) {
         _ringState = _ringState.copyWith(connectionState: state);
         if (state == RingConnectionState.connected) {
@@ -127,7 +159,7 @@ class ZeroController with ChangeNotifier {
         notifyListeners();
       }));
 
-      // 8. Listen to BLE audio from ring
+      // 5. Listen to BLE audio from ring
       _subs.add(_bleService.audioStream.listen((audioData) {
         _audioService.processBleAudioChunk(audioData);
         if (_audioService.detectWakeWord(audioData)) {
@@ -135,7 +167,7 @@ class ZeroController with ChangeNotifier {
         }
       }));
 
-      // 9. Listen to accel data — gravity reactivity
+      // 6. Listen to accel data — gravity reactivity
       _subs.add(_bleService.accelStream.listen((accel) {
         _handleSensorData(accel);
         if (_ringState.isMouseModeActive) {
@@ -143,14 +175,16 @@ class ZeroController with ChangeNotifier {
         }
       }));
 
-      // 10. Start idle behavior timer
+      // 7. Start idle behavior timer
       _startIdleBehaviors();
 
+      // 8. Start BLE scanning
       _bleService.startScan();
+
+      notifyListeners();
     } catch (e) {
-      debugPrint('[ZeroController] Critical error during initState: $e');
+      debugPrint('[ZeroController] Hardware initialization critical failure: $e');
     }
-    notifyListeners();
   }
 
   // ═══ SENSOR REACTIVITY ═══
@@ -227,10 +261,18 @@ class ZeroController with ChangeNotifier {
     debugPrint('[ZeroController] Raw BLE audio received — STT handled by VoicePipelineService.');
   }
 
-  // DIRECT TEXT COMMAND (works without ring hardware)
-  Future<void> handleTextCommand(String text) async {
+  Future<void> handleTextCommand(String text, {bool isVoice = false}) async {
     if (_isProcessing) return;
     _isProcessing = true;
+    
+    // Stop recording immediately to prevent voice feedback/audio overlap
+    if (_ringState.isRecording) {
+      await stopRecording();
+    }
+
+    // Pause wake word engine to prevent it from self-triggering while Zero speaks/thinks
+    _audioService.stopWakeWordEngine();
+
     _updateEmotion(ZeroEmotion.thinking);
     _personalityService.onInteraction();
     notifyListeners();
@@ -239,6 +281,18 @@ class ZeroController with ChangeNotifier {
       // 1. Agentic / Tool Calling execution
       final intent = await _agenticService.parseIntent(text);
       if (intent.action != ZeroAction.unknown) {
+        if (intent.action == ZeroAction.searchWeb && !_preferencesService.isWebSearchEnabled) {
+          final disabledMsg = "Web search is disabled in settings 🌐";
+          _conversationManager.addMessage('user', text);
+          _conversationManager.addMessage('assistant', disabledMsg);
+          _updateResponse(disabledMsg);
+          if (isVoice) {
+            await _ttsService.speak(disabledMsg);
+          }
+          _updateEmotion(ZeroEmotion.happy);
+          return;
+        }
+
         _updateResponse('Executing command...');
 
         // Signal ring: start thinking
@@ -253,8 +307,12 @@ class ZeroController with ChangeNotifier {
         } else if (actionResult == 'MOUSE_DISABLE') {
           if (_ringState.isMouseModeActive) toggleMouseMode();
         } else {
+          _conversationManager.addMessage('user', text);
+          _conversationManager.addMessage('assistant', actionResult);
           _updateResponse(actionResult);
-          await _ttsService.speak(actionResult);
+          if (isVoice) {
+            await _ttsService.speak(actionResult);
+          }
 
           // ── Send answer to ring OLED for searchWeb ──────────────────────
           if (intent.action == ZeroAction.searchWeb) {
@@ -274,61 +332,114 @@ class ZeroController with ChangeNotifier {
         return;
       }
 
-      // 2. Fallback to conversational models (Qwen Nano)
-      final routing = await _classifierService.classify(text);
-      _debugRouting = routing;
-      bool isSimple = routing == "SIMPLE";
-      bool isComplex = routing == "COMPLEX";
+      // 2. Direct LLM Processing (Classifier removed per user request)
+      //    Respects _preferredModel toggle.
+      
+      bool isPrimeEnabled = _preferencesService.isPrimeEnabled;
+      bool tryNanoFirst = _preferredModel == ActiveModel.nano || !isPrimeEnabled;
+      bool handled = false;
 
-      if (isSimple && _nanoService.isLoaded) {
-        _ringState = _ringState.copyWith(activeModel: ActiveModel.nano);
-        notifyListeners();
-        // FIX #5: Stream tokens live so UI updates word-by-word, not all at once.
-        await _streamNanoResponse(text);
-        _updateEmotion(ZeroEmotion.happy);
-      } else if (isComplex) {
-        _ringState = _ringState.copyWith(activeModel: ActiveModel.prime);
-        notifyListeners();
-        if (_primeService.isInitialized) {
-          // FIX #5: Stream tokens live.
-          final responseBuffer = StringBuffer();
-          await for (final token in _primeService.solveComplexProblem(prompt: text)) {
-            responseBuffer.write(token);
-            _updateResponse(responseBuffer.toString());
-          }
-          final response = responseBuffer.toString().trim();
-          await _ttsService.speak(response);
-          _updateEmotion(ZeroEmotion.excited);
-        } else if (_nanoService.isLoaded) {
-          // Gemma not ready yet — fall back to Qwen for complex queries.
-          final bridge = _nanoService.getBridgeResponse();
-          _updateResponse(bridge);
-          await _ttsService.speak(bridge);
-          await _streamNanoResponse(text);
-          _updateEmotion(ZeroEmotion.happy);
-        } else {
-          final bridge = _nanoService.getBridgeResponse();
-          _updateResponse(bridge);
-          await _ttsService.speak(bridge);
+      if (tryNanoFirst) {
+        if (!_nanoService.isLoaded) {
+          _updateResponse('Waking up Qwen... this might take a few seconds ⚡');
+          notifyListeners();
+          final dir = await getApplicationDocumentsDirectory();
+          final nanoPath = '${dir.path}/${AppConstants.FILE_QWEN}';
+          await _nanoService.initialize(nanoPath);
         }
-      } else if (_nanoService.isLoaded) {
-        // Fallback: unknown routing but model available
-        _ringState = _ringState.copyWith(activeModel: ActiveModel.nano);
-        notifyListeners();
-        await _streamNanoResponse(text);
-        _updateEmotion(ZeroEmotion.happy);
-      } else {
-        // No model loaded — friendly fallback with hint to download
-        final fallback = _personalityService.getNoModelResponse(text);
+
+        if (_nanoService.isLoaded) {
+          _debugRouting = 'NANO (Direct)';
+          _ringState = _ringState.copyWith(activeModel: ActiveModel.nano);
+          notifyListeners();
+          await _streamNanoResponse(text, isVoice: isVoice);
+          _updateEmotion(ZeroEmotion.happy);
+          handled = true;
+        }
+      } else if (isPrimeEnabled) {
+        if (!_primeService.isInitialized) {
+          _updateResponse('Waking up Gemma... this might take a few seconds ⚡');
+          notifyListeners();
+          await _primeService.initialize();
+        }
+        
+        if (_primeService.isInitialized) {
+          _debugRouting = 'PRIME (Direct)';
+          _ringState = _ringState.copyWith(activeModel: ActiveModel.prime);
+          notifyListeners();
+          
+          await _streamPrimeResponse(text, isVoice: isVoice);
+          handled = true;
+        }
+      }
+
+      // Fallbacks if preferred model wasn't available
+      if (!handled) {
+        if (tryNanoFirst) {
+          // Fallback to Prime
+          if (isPrimeEnabled) {
+            if (!_primeService.isInitialized) {
+              _updateResponse('Qwen is missing! Waking up Gemma instead... this might take a few seconds ⚡');
+              notifyListeners();
+              await _primeService.initialize();
+            }
+            if (_primeService.isInitialized) {
+              _debugRouting = 'PRIME (Fallback)';
+              _ringState = _ringState.copyWith(activeModel: ActiveModel.prime);
+              notifyListeners();
+              
+              await _streamPrimeResponse(text, isVoice: isVoice);
+              handled = true;
+            }
+          }
+        } else {
+          // Fallback to Nano
+          if (!_nanoService.isLoaded) {
+            _updateResponse('Gemma is missing! Waking up Qwen instead... this might take a few seconds ⚡');
+            notifyListeners();
+            final dir = await getApplicationDocumentsDirectory();
+            final nanoPath = '${dir.path}/${AppConstants.FILE_QWEN}';
+            await _nanoService.initialize(nanoPath);
+          }
+          if (_nanoService.isLoaded) {
+            _debugRouting = 'NANO (Fallback)';
+            _ringState = _ringState.copyWith(activeModel: ActiveModel.nano);
+            notifyListeners();
+            await _streamNanoResponse(text, isVoice: isVoice);
+            _updateEmotion(ZeroEmotion.happy);
+            handled = true;
+          }
+        }
+      }
+
+      if (!handled) {
+        String fallback = _personalityService.getNoModelResponse(text);
+
+        if (tryNanoFirst && _nanoService.lastLoadError != null) {
+          fallback = "Oops! I tried to start Qwen, but the AI engine crashed. Error: ${_nanoService.lastLoadError}";
+        } else if (!tryNanoFirst && _primeService.lastLoadError != null) {
+          fallback = "Oops! I tried to start Gemma, but the AI engine crashed. Error: ${_primeService.lastLoadError}";
+        } else if (_nanoService.lastLoadError != null && _primeService.lastLoadError != null) {
+          fallback = "Both AI engines crashed! Nano: ${_nanoService.lastLoadError} | Prime: ${_primeService.lastLoadError}";
+        }
+
+        _conversationManager.addMessage('user', text);
+        _conversationManager.addMessage('assistant', fallback);
         _updateResponse(fallback);
-        await _ttsService.speak(fallback);
-        _updateEmotion(ZeroEmotion.happy);
+        if (isVoice) {
+          await _ttsService.speak(fallback);
+        }
+        _updateEmotion(ZeroEmotion.surprised);
       }
     } catch(e) {
       _updateResponse("Brain hiccup! Try again ✨");
       _updateEmotion(ZeroEmotion.surprised);
     } finally {
       _isProcessing = false;
+      // Resume wake word engine if it is enabled in settings
+      if (_preferencesService.isWakeWordEnabled) {
+        _audioService.resumeWakeWordEngine();
+      }
       notifyListeners();
     }
   }
@@ -336,7 +447,7 @@ class ZeroController with ChangeNotifier {
   /// FIX #5: Stream Qwen tokens live to the chat UI.
   /// UI shows each word as it's generated (like ChatGPT streaming).
   /// TTS speaks the full response only after generation completes.
-  Future<void> _streamNanoResponse(String text) async {
+  Future<void> _streamNanoResponse(String text, {bool isVoice = false}) async {
     final buffer = StringBuffer();
     _conversationManager.addMessage('user', text);
     _conversationManager.startStreamingAssistantMessage();
@@ -345,14 +456,50 @@ class ZeroController with ChangeNotifier {
       buffer.write(token);
       _lastResponse = buffer.toString();
       _conversationManager.appendStreamingToken(token);
-      notifyListeners(); // live word-by-word update
+      // ConversationManager now throttles its own notifyListeners,
+      // so we don't call notifyListeners() here to avoid double-rebuilds.
     }
 
     _conversationManager.finishStreamingAssistantMessage();
-    final fullResponse = buffer.toString().trim();
-    if (fullResponse.isNotEmpty) {
+    final fullResponse = _cleanForTts(buffer.toString().trim());
+    if (isVoice && fullResponse.isNotEmpty) {
       await _ttsService.speak(fullResponse);
     }
+  }
+
+  Future<void> _streamPrimeResponse(String text, {bool isVoice = false}) async {
+    final buffer = StringBuffer();
+    _conversationManager.addMessage('user', text);
+    _conversationManager.startStreamingAssistantMessage();
+    
+    _updateResponse('Loading Zero Prime... ⚡');
+
+    await for (final token in _primeService.solveComplexProblem(prompt: text)) {
+      buffer.write(token);
+      _lastResponse = buffer.toString();
+      _conversationManager.appendStreamingToken(token);
+      // ConversationManager now throttles its own notifyListeners.
+    }
+
+    _conversationManager.finishStreamingAssistantMessage();
+    final fullResponse = _cleanForTts(buffer.toString().trim());
+    if (isVoice && fullResponse.isNotEmpty) {
+      await _ttsService.speak(fullResponse);
+    }
+    _updateEmotion(ZeroEmotion.excited);
+  }
+
+  /// Strip any model control tokens that leaked into the final response
+  /// before sending to TTS. The TTS service has its own cleanup too,
+  /// but this prevents obviously broken strings from reaching it.
+  String _cleanForTts(String text) {
+    return text
+        .replaceAll('<|im_start|>', '')
+        .replaceAll('<|im_end|>', '')
+        .replaceAll('<start_of_turn>', '')
+        .replaceAll('<end_of_turn>', '')
+        .replaceAll(RegExp(r'\n(User|user|assistant|system):'), '')
+        .trim();
   }
 
   // ═══ RECORDING ═══
@@ -452,6 +599,37 @@ class ZeroController with ChangeNotifier {
       _updateResponse("Listening for command...");
       await startRecording();
     }
+  }
+
+  Future<void> toggleWakeWordEnabled(bool enabled) async {
+    await _preferencesService.setWakeWordEnabled(enabled);
+    if (enabled) {
+      try {
+        await _audioService.initWakeWordEngine(() {
+          _handleVoiceActivation();
+        });
+      } catch (e) {
+        debugPrint('[ZeroController] Dynamic wake-word enable failed: $e');
+      }
+    } else {
+      _audioService.stopWakeWordEngine();
+    }
+    notifyListeners();
+  }
+
+  Future<void> togglePrimeEnabled(bool enabled) async {
+    await _preferencesService.setPrimeEnabled(enabled);
+    notifyListeners();
+  }
+
+  Future<void> toggleWebSearchEnabled(bool enabled) async {
+    await _preferencesService.setWebSearchEnabled(enabled);
+    notifyListeners();
+  }
+
+  Future<void> toggleAutoUpdateEnabled(bool enabled) async {
+    await _preferencesService.setAutoUpdateEnabled(enabled);
+    notifyListeners();
   }
 
   @override

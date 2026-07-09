@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:isolate';
-import 'dart:ui';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_downloader/flutter_downloader.dart';
+import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/download_model.dart';
@@ -16,8 +14,8 @@ class DownloadService with ChangeNotifier {
   bool _isDownloading = false;
   String _statusMessage = '';
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  final ReceivePort _port = ReceivePort();
-  static const String _portName = 'downloader_send_port';
+  final Dio _dio = Dio();
+  CancelToken? _cancelToken;
 
   List<ModelDownloadItem> get items => _items;
   bool get allDownloaded => _allDownloaded;
@@ -25,9 +23,11 @@ class DownloadService with ChangeNotifier {
   String get statusMessage => _statusMessage;
 
   DownloadService() {
-    _bindBackgroundIsolate();
-    FlutterDownloader.registerCallback(downloadCallback);
-    _loadExistingTasks();
+    _init();
+  }
+
+  Future<void> _init() async {
+    await checkAllDownloaded();
   }
 
   double get weightedProgress {
@@ -41,99 +41,6 @@ class DownloadService with ChangeNotifier {
     return totalMB == 0 ? 0.0 : doneMB / totalMB;
   }
 
-  void _bindBackgroundIsolate() {
-    final isSuccess = IsolateNameServer.registerPortWithName(_port.sendPort, _portName);
-    if (!isSuccess) {
-      _unbindBackgroundIsolate();
-      _bindBackgroundIsolate();
-      return;
-    }
-    _port.listen((dynamic data) {
-      String id = data[0];
-      int status = data[1];
-      int progress = data[2];
-      _updateProgress(id, status, progress);
-    });
-  }
-
-  void _unbindBackgroundIsolate() {
-    IsolateNameServer.removePortNameMapping(_portName);
-  }
-
-  @pragma('vm:entry-point')
-  static void downloadCallback(String id, int status, int progress) {
-    final SendPort? send = IsolateNameServer.lookupPortByName(_portName);
-    send?.send([id, status, progress]);
-  }
-
-  Future<void> _loadExistingTasks() async {
-    final tasks = await FlutterDownloader.loadTasks();
-    if (tasks != null) {
-      for (var task in tasks) {
-        for (var item in _items) {
-          // Match by URL — this is reliable even after an app kill/restart
-          if (item.url == task.url || item.url.split('?').first == task.url.split('?').first) {
-            item.taskId = task.taskId;
-            int statusValue = 0;
-            if (task.status == DownloadTaskStatus.enqueued) statusValue = 1;
-            else if (task.status == DownloadTaskStatus.running) statusValue = 2;
-            else if (task.status == DownloadTaskStatus.complete) statusValue = 3;
-            else if (task.status == DownloadTaskStatus.failed) statusValue = 4;
-            else if (task.status == DownloadTaskStatus.canceled) statusValue = 5;
-            else if (task.status == DownloadTaskStatus.paused) statusValue = 6;
-
-            // Restore the exact progress percentage from the saved task.
-            // This is what makes the download bar resume from the correct % on reopen.
-            _updateProgress(task.taskId, statusValue, task.progress, notify: false);
-          }
-        }
-      }
-      notifyListeners();
-    }
-    // checkAllDownloaded runs after task state is restored.
-    // It is safe because it skips items that are currently in an active state.
-    await checkAllDownloaded();
-  }
-
-  void _updateProgress(String taskId, int statusValue, int progress, {bool notify = true}) {
-    // 1=enqueued, 2=running, 3=complete, 4=failed, 5=canceled, 6=paused
-    for (var item in _items) {
-      if (item.taskId == taskId) {
-        if (statusValue == 2) {
-          item.status = DownloadStatus.downloading;
-          item.progress = (progress / 100.0).clamp(0.0, 0.99);
-          // Premium mock speed for UI feel (fluctuates between 15-28 MB/s)
-          item.downloadSpeedMBps = 15.0 + (DateTime.now().millisecond % 130) / 10.0;
-        } else if (statusValue == 3) {
-          item.downloadSpeedMBps = 0;
-          if (item.status != DownloadStatus.completed && item.status != DownloadStatus.verifying) {
-            item.status = DownloadStatus.verifying;
-            item.progress = 1.0;
-            _verifyChecksum(item);
-          }
-        } else if (statusValue == 4) {
-          item.status = DownloadStatus.failed;
-          item.downloadSpeedMBps = 0;
-          item.errorMessage = 'Download failed';
-        } else if (statusValue == 5) {
-          item.status = DownloadStatus.pending;
-          item.downloadSpeedMBps = 0;
-          item.progress = 0.0;
-        } else if (statusValue == 6) {
-          // Paused: show correct progress but not as actively downloading.
-          // Will be resumed on next downloadAll() call.
-          item.status = DownloadStatus.pending;
-          item.downloadSpeedMBps = 0;
-          // Keep item.progress so the bar shows the partial amount
-        }
-        break;
-      }
-    }
-    
-    _checkOverallStatus();
-    if (notify) notifyListeners();
-  }
-
   Future<void> _verifyChecksum(ModelDownloadItem item) async {
     if (item.expectedSha256 == null || item.expectedSha256!.isEmpty) {
       item.status = DownloadStatus.completed;
@@ -142,8 +49,9 @@ class DownloadService with ChangeNotifier {
       return; 
     }
     
-    // Simulate delay for UI feel if file is large
-    await Future.delayed(const Duration(seconds: 2));
+    item.status = DownloadStatus.verifying;
+    notifyListeners();
+    await Future.delayed(const Duration(seconds: 1));
     
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -193,25 +101,26 @@ class DownloadService with ChangeNotifier {
       final file = File('${dir.path}/${item.fileName}');
       final expectedBytes = item.fileSizeMB * 1024 * 1024;
 
-      if (file.existsSync() && file.lengthSync() >= (expectedBytes * 0.9)) {
-        // File is fully downloaded and verified by size — mark complete.
-        item.status = DownloadStatus.completed;
-        item.progress = 1.0;
-      } else if (item.status == DownloadStatus.downloading ||
-          item.status == DownloadStatus.verifying) {
-        // ─── CRITICAL FIX ───
-        // Do NOT reset items that are currently downloading/verifying in the
-        // background. Resetting here was causing the progress to jump back to 0
-        // every time the app reopened mid-download.
-        all = false;
-      } else {
-        // File is missing or incomplete, and not actively downloading — reset.
-        if (item.status != DownloadStatus.failed) {
-          item.status = DownloadStatus.pending;
-          // Keep existing progress if taskId is present (partial download exists)
-          if (item.taskId == null) item.progress = 0.0;
+      if (file.existsSync()) {
+        final currentBytes = file.lengthSync();
+        if (currentBytes >= (expectedBytes * 0.9)) {
+          item.status = DownloadStatus.completed;
+          item.progress = 1.0;
+        } else {
+          all = false;
+          if (item.status != DownloadStatus.downloading && item.status != DownloadStatus.verifying) {
+            item.status = DownloadStatus.pending;
+            item.progress = (currentBytes / expectedBytes).clamp(0.0, 0.99);
+          }
         }
+      } else {
         all = false;
+        if (item.status != DownloadStatus.downloading && item.status != DownloadStatus.verifying) {
+          if (item.status != DownloadStatus.failed) {
+            item.status = DownloadStatus.pending;
+            item.progress = 0.0;
+          }
+        }
       }
     }
 
@@ -232,12 +141,7 @@ class DownloadService with ChangeNotifier {
   }
 
   Future<void> downloadAll() async {
-    if (_items.any((item) => item.status == DownloadStatus.downloading)) {
-      _isDownloading = true;
-      _statusMessage = 'Downloading...';
-      notifyListeners();
-      return;
-    }
+    if (_isDownloading) return;
     
     if (!await _hasConnectivity()) {
       _statusMessage = 'No internet connection. Please connect to WiFi or mobile data.';
@@ -246,7 +150,6 @@ class DownloadService with ChangeNotifier {
       _connectivitySubscription = Connectivity().onConnectivityChanged.listen((result) {
         if (result.any((c) => c != ConnectivityResult.none) && !_isDownloading && !_allDownloaded) {
           _statusMessage = 'Connection restored! Resuming...';
-          _isDownloading = false;
           notifyListeners();
           downloadAll();
         }
@@ -256,49 +159,123 @@ class DownloadService with ChangeNotifier {
     
     _isDownloading = true;
     _statusMessage = 'Downloading...';
+    _cancelToken = CancelToken();
     notifyListeners();
 
+    await _processQueue();
+  }
+
+  Future<void> _processQueue() async {
     final dir = await getApplicationDocumentsDirectory();
 
     for (final item in _items) {
-      if (item.status == DownloadStatus.completed || item.status == DownloadStatus.downloading) {
-        continue;
-      }
+      if (_cancelToken?.isCancelled ?? true) break;
+      if (item.status == DownloadStatus.completed) continue;
 
-      if (item.taskId != null) {
-        // Resume existing task if possible
-        try {
-          await FlutterDownloader.resume(taskId: item.taskId!);
-          continue;
-        } catch (_) {}
-      }
-
-      // Enqueue new task
-      final taskId = await FlutterDownloader.enqueue(
-        url: item.url,
-        savedDir: dir.path,
-        fileName: item.fileName,
-        showNotification: true,
-        openFileFromNotification: false,
-        requiresStorageNotLow: true,
-      );
-      
-      item.taskId = taskId;
       item.status = DownloadStatus.downloading;
       item.errorMessage = null;
-      item.retryCount = 0;
+      notifyListeners();
+
+      try {
+        final savePath = '${dir.path}/${item.fileName}';
+        final file = File(savePath);
+        int downloadedBytes = 0;
+        
+        if (await file.exists()) {
+          downloadedBytes = await file.length();
+        }
+
+        final options = Options(
+          responseType: ResponseType.stream,
+          headers: downloadedBytes > 0 ? {'Range': 'bytes=$downloadedBytes-'} : null,
+        );
+
+        final response = await _dio.get<ResponseBody>(
+          item.url,
+          options: options,
+          cancelToken: _cancelToken,
+        );
+
+        // If the server doesn't support partial content, it will return 200 instead of 206
+        if (response.statusCode == 200 && downloadedBytes > 0) {
+          downloadedBytes = 0;
+          await file.writeAsBytes([]); // Clear the file
+        }
+
+        final contentLengthStr = response.headers.value(HttpHeaders.contentLengthHeader);
+        final contentLength = int.tryParse(contentLengthStr ?? '-1') ?? -1;
+        final totalBytes = contentLength != -1 ? contentLength + downloadedBytes : -1;
+
+        final raf = file.openSync(mode: downloadedBytes > 0 ? FileMode.append : FileMode.write);
+        int receivedBytes = downloadedBytes;
+
+        try {
+          await for (final chunk in response.data!.stream) {
+            if (_cancelToken?.isCancelled ?? false) break;
+            raf.writeFromSync(chunk);
+            receivedBytes += chunk.length;
+
+            if (totalBytes != -1) {
+              item.progress = (receivedBytes / totalBytes).clamp(0.0, 0.99);
+            } else {
+              final expectedBytes = item.fileSizeMB * 1024 * 1024;
+              item.progress = (receivedBytes / expectedBytes).clamp(0.0, 0.99);
+            }
+
+            final now = DateTime.now();
+            final timeElapsed = now.difference(item.lastProgressTime);
+            
+            if (timeElapsed.inMilliseconds > 300) {
+              final diffPct = item.progress - (item.lastProgress / 100.0);
+              if (diffPct > 0) {
+                final downloadedMB = item.fileSizeMB * diffPct;
+                item.downloadSpeedMBps = downloadedMB / (timeElapsed.inMilliseconds / 1000.0);
+              }
+              item.lastProgress = (item.progress * 100).toInt();
+              item.lastProgressTime = now;
+              notifyListeners();
+            }
+          }
+        } finally {
+          raf.closeSync();
+        }
+        
+        if (_cancelToken?.isCancelled ?? false) {
+           throw DioException.requestCancelled(requestOptions: response.requestOptions, reason: 'User cancelled');
+        }
+
+        // Download complete
+        item.downloadSpeedMBps = 0;
+        item.progress = 1.0;
+        notifyListeners();
+        
+        await _verifyChecksum(item);
+        
+      } catch (e) {
+        if (e is DioException && e.type == DioExceptionType.cancel) {
+          item.status = DownloadStatus.pending;
+          item.downloadSpeedMBps = 0;
+          debugPrint('Download cancelled: ${item.fileName}');
+        } else {
+          item.status = DownloadStatus.failed;
+          item.downloadSpeedMBps = 0;
+          item.errorMessage = 'Connection lost. Tap to retry.';
+          debugPrint('Download failed: $e');
+        }
+        notifyListeners();
+        break; // Stop the queue on error
+      }
     }
+
+    _isDownloading = false;
+    _checkOverallStatus();
     notifyListeners();
   }
 
   Future<void> retryFailed() async {
     for (final item in _items) {
       if (item.status == DownloadStatus.failed) {
-        if (item.taskId != null) {
-           await FlutterDownloader.retry(taskId: item.taskId!);
-        } else {
-           item.status = DownloadStatus.pending;
-        }
+        item.status = DownloadStatus.pending;
       }
     }
     await downloadAll();
@@ -320,11 +297,12 @@ class DownloadService with ChangeNotifier {
   }
 
   void cancelAll() {
+    _cancelToken?.cancel('User cancelled');
     for (final item in _items) {
-      if (item.taskId != null && item.status == DownloadStatus.downloading) {
-        FlutterDownloader.cancel(taskId: item.taskId!);
+      if (item.status == DownloadStatus.downloading) {
         item.status = DownloadStatus.pending;
         item.progress = 0.0;
+        item.downloadSpeedMBps = 0;
       }
     }
     _isDownloading = false;
@@ -333,8 +311,8 @@ class DownloadService with ChangeNotifier {
 
   @override
   void dispose() {
-    _unbindBackgroundIsolate();
     _connectivitySubscription?.cancel();
+    _cancelToken?.cancel();
     super.dispose();
   }
 }

@@ -9,7 +9,8 @@ plugins {
 
 android {
     namespace = "com.zerotech.zero_ring_app"
-    compileSdk = 35
+    compileSdk = 36
+    ndkVersion = "28.2.13676358"
 
     androidResources {
         noCompress.add("tflite")
@@ -53,5 +54,6 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    implementation(files("libs/llama-cpp-dart.aar"))
 }
 

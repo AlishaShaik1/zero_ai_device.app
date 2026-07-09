@@ -15,7 +15,7 @@ class AppConstants {
   static const String MODEL_VOICE_NAME = 'System Voice';
 
   // Download URLs
-  static const String URL_QWEN = 'https://huggingface.co/drmcbride/Qwen3-0.6B-Q8_0-GGUF/resolve/main/qwen3-0.6b-q8_0.gguf?download=true';
+  static const String URL_QWEN = 'https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf?download=true';
   static const String URL_GEMMA = 'https://huggingface.co/bartowski/gemma-2-9b-it-GGUF/resolve/main/gemma-2-9b-it-Q4_K_M.gguf?download=true';
 
   // Bump the cache version whenever the STT model source changes so the app
@@ -23,7 +23,7 @@ class AppConstants {
   static const String URL_STT_WHISPER_MEDIUM = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin?download=true';
 
   // File names saved on device
-  static const String FILE_QWEN = 'qwen3-0.6b-q8_0.gguf';
+  static const String FILE_QWEN = 'Qwen3-0.6B-Q8_0.gguf';
   static const String FILE_GEMMA = 'gemma-2-9b-it-Q4_K_M.gguf';
 
   static const String FILE_STT_WHISPER_MEDIUM = 'ggml-medium.bin';
